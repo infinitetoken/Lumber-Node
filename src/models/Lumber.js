@@ -1,4 +1,3 @@
-const axios = require('axios')
 const traceArray = require('trace-array')
 const { level } = require('../configs')
 const { post } = require('../helpers')
