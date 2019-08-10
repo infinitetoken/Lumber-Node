@@ -7,7 +7,7 @@ class Lumber {
   constructor(token) { this.token = token }
   post(message, level) {
     const trace = traceArray(2)
-    const log = new Log({ column: trace.column, level,  line: trace.line, message, method: trace.method })
+    const log = new Log({ column: trace.column, level, line: trace.line, message, method: trace.method })
     post(this.token, log)
   }
   info(s) { this.post(s, level.info) }
