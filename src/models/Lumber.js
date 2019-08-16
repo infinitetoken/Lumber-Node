@@ -1,6 +1,6 @@
 const traceArray = require('trace-array')
 const { level } = require('../configs')
-const { post } = require('../helpers')
+const { postLog } = require('../helpers')
 const Log = require('./Log')
 
 class Lumber {
@@ -8,7 +8,7 @@ class Lumber {
   post(message, code, level) {
     const trace = traceArray(2)
     const log = new Log({ code, column: trace.column, level, line: trace.line, message, method: trace.method })
-    post(this.token, log)
+    postLog(this.token, log)
   }
   info(s, code) { this.post(s, code, level.info) }
   debug(s, code) { this.post(s, code, level.debug) }

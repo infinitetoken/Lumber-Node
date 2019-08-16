@@ -5,7 +5,7 @@ module.exports = (token, data) => {
   return new Promise((resolve, reject) => {
     data = JSON.stringify(data)
 
-    const req = https.request(server.domain, {
+    const req = https.request(`${server.domain}/logs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
