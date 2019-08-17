@@ -1,11 +1,11 @@
-const https = require('https'),
+const { request } = require('https'),
   { server } = require('../configs')
 
 module.exports = (token, data) => {
   return new Promise((resolve, reject) => {
     data = JSON.stringify(data)
 
-    const req = https.request(`${server.domain}/logs`, {
+    const req = request(`${server.domain}/logs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -18,9 +18,7 @@ module.exports = (token, data) => {
       res.on('data', (d) => resolve())
     })
 
-    req.on('error', (error) => {
-
-    })
+    req.on('error', (err) => console.log(err))
 
     req.write(data)
     req.end()
