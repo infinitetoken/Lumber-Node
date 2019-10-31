@@ -47,6 +47,6 @@ class Lumber {
     this.log(`${cosmetic.xterm(166)('Critical')}: ${s}`, code)
     return this.logCloud(s, code, level.critical)
   }
-};
+}
 
 module.exports = Lumber

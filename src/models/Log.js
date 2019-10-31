@@ -8,6 +8,6 @@ class Log {
     this.message = data.message || null
     this.method = data.method || null
   }
-};
+}
 
 module.exports = Log
