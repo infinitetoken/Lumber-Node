@@ -20,7 +20,9 @@ class Lumber {
   logCloud(message, code, level) {
     if (!this.cloud || !this.token) return
     const trace = traceArray(2)
-    const log = new Log({ code, column: trace.column, level, line: trace.line, message, method: trace.method })
+    const column = parseInt(trace.column) || 0
+    const line = parseInt(trace.line) || 0
+    const log = new Log({ code, column, level, line, message, method: trace.method })
     return postLog(this.token, log)
   }
   info(s, code) {
