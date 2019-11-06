@@ -29,7 +29,7 @@ lumber.error('error')
 lumber.critical('critical')
 ```
 
-Optionally send stringified 'code' to any of log methods.
+Optionally send stringified 'code' to any of the lumber methods.
 
 ```javascript
 lumber.info('info', JSON.stringify({ key: 'value' }, null, 2))
