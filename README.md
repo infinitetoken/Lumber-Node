@@ -1,6 +1,11 @@
 # Lumber
 
-Lumber is a cloud service for logs
+Cloud logging for NodeJS
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [App](#app)
+- [License](#license)
 
 ## Installation
 
@@ -35,5 +40,15 @@ Optionally send stringified 'code' to any of the lumber methods.
 lumber.info('info', JSON.stringify({ key: 'value' }, null, 2))
 ```
 
+## App
+
+Lumber has a companion app available for MacOS, Windows, and LInux for viewing messages and errors logged to the cloud by using an optional API key. 
+An API key can be obtained by creating a new app instance in the Lumber app.
+
+![Lumber Screenshot](https://github.com/infinitetoken/Lumber-Swift/blob/master/Lumber.png)
+
+[Download the Lumber app](https://www.infinitetoken.com/apps/lumber)
+
 ## License
-[MIT](https://choosealicense.com/licenses/mit/)
+
+Lumber is released under the MIT license. [See LICENSE](https://github.com/infinitetoken/Lumber-Node/blob/master/LICENSE) for details.
