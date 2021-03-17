@@ -2,6 +2,7 @@ const { post } = require('axios'),
   { server } = require('../configs')
 
 module.exports = async (token, data) => {
+  if (!token) return
   try {
     const result = await post(`${server.domain}/logs`, data, {
       headers: {

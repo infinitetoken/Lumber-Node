@@ -4,7 +4,7 @@
   "description": "A node module for Lumber logging",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "LUMBER_DOMAIN=http://localhost:5000 node test"
   },
   "author": "Jay Deaton",
   "license": "ISC",
@@ -12,5 +12,8 @@
     "axios": "^0.21.1",
     "cosmetic": "^1.2.1",
     "trace-array": "0.0.1"
+  },
+  "devDependencies": {
+    "faker": "^5.4.0"
   }
 }
