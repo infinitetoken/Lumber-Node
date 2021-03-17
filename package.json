@@ -9,7 +9,7 @@
   "author": "Jay Deaton",
   "license": "ISC",
   "dependencies": {
-    "axios": "^0.19.0",
+    "axios": "^0.21.1",
     "cosmetic": "^1.2.1",
     "trace-array": "0.0.1"
   }
