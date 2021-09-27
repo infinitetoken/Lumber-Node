@@ -1,4 +1,4 @@
-const lumber = require('./')('7741519186c911eb8ac9d7c7d5f10741'),
+const lumber = require('./')(''),
   faker = require('faker')
 
 const timeout = (s) => new Promise(resolve => setTimeout(resolve, s * 1000))
@@ -10,22 +10,23 @@ const test = async (n) => {
       number: faker.random.number(),
       boolean: faker.random.boolean()
     }, null, 2) : null
-    const level = Math.random() * 5
+    const level = Math.random() * 6
     if (level < 1) {
-      lumber.debug(faker.lorem.sentence(), code)
+      lumber.info(faker.lorem.sentence(), code)
     } else if (level < 2) {
-      lumber.verbose(faker.lorem.sentence(), code)
+      lumber.debug(faker.lorem.sentence(), code)
     } else if (level < 3) {
-      lumber.warning(faker.lorem.sentence(), code)
+      lumber.verbose(faker.lorem.sentence(), code)
     } else if (level < 4) {
+      lumber.warning(faker.lorem.sentence(), code)
+    } else if (level < 5) {
       lumber.error(faker.lorem.sentence(), code)
     } else {
       lumber.critical(faker.lorem.sentence(), code)
     }
-    await timeout(1)
+    await timeout(2)
     if (!isNaN(n)) n--
   }
-
   // lumber.cloud = false
   // lumber.debug('Debug')
   // lumber.verbose('Verbose')
