@@ -1,6 +1,6 @@
 {
   "name": "@infinitetoken/lumber",
-  "version": "0.0.9",
+  "version": "1.0.0",
   "description": "A node module for Lumber logging",
   "main": "index.js",
   "scripts": {
