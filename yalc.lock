@@ -1,0 +1,9 @@
+{
+  "version": "v1",
+  "packages": {
+    "@infinitetoken/lumber-kit": {
+      "signature": "22e7771239c8159c7eb336658ecee9be",
+      "file": true
+    }
+  }
+}

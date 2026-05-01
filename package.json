@@ -1,19 +1,36 @@
 {
   "name": "@infinitetoken/lumber",
   "version": "1.0.0",
-  "description": "A node module for Lumber logging",
-  "main": "index.js",
+  "description": "TypeScript Node.js logging plugin for Lumber — AES-256-GCM encrypted, async queue, zero dependencies",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18.0.0" },
   "scripts": {
-    "test": "LUMBER_DOMAIN=http://localhost:5000 node test"
+    "build": "npm run build:cjs && npm run build:esm",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:esm": "tsc -p tsconfig.esm.json && echo '{\"type\": \"module\"}' > dist/esm/package.json",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
   },
   "author": "Jay Deaton",
   "license": "ISC",
-  "dependencies": {
-    "axios": "^0.21.1",
-    "cosmetic": "^1.2.1",
-    "trace-array": "0.0.1"
-  },
+  "publishConfig": { "access": "public" },
   "devDependencies": {
-    "faker": "^5.4.0"
+    "@infinitetoken/lumber-kit": "file:.yalc/@infinitetoken/lumber-kit",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9",
+    "typescript": "^6.0.3"
   }
 }
