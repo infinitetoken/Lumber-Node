@@ -1,6 +1,6 @@
 {
   "name": "@infinitetoken/lumber",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "TypeScript Node.js logging plugin for Lumber — AES-256-GCM encrypted, async queue, zero dependencies",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
@@ -31,6 +31,9 @@
   "license": "ISC",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@infinitetoken/lumber-kit": "^0.1.0"
   },
   "devDependencies": {
     "@infinitetoken/lumber-kit": "file:.yalc/@infinitetoken/lumber-kit",

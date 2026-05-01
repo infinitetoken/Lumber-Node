@@ -67,10 +67,12 @@ describe('LumberClient.log()', () => {
   })
 })
 
-describe('zero runtime dependencies', () => {
-  it('package.json has no "dependencies" key', () => {
+describe('runtime dependencies', () => {
+  it('package.json dependencies contains only @infinitetoken/lumber-kit (our own types package)', () => {
     const pkgPath = resolve(__dirname, '../package.json')
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-    expect(pkg.dependencies).toBeUndefined()
+    const deps = Object.keys(pkg.dependencies ?? {})
+    // Only our own types package is allowed — no third-party utility dependencies
+    expect(deps).toEqual(['@infinitetoken/lumber-kit'])
   })
 })
