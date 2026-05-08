@@ -36,7 +36,6 @@
     "@infinitetoken/lumber-kit": "^0.1.0"
   },
   "devDependencies": {
-    "@infinitetoken/lumber-kit": "file:.yalc/@infinitetoken/lumber-kit",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.0",
     "jest": "^30.3.0",
