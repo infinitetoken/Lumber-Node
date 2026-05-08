@@ -18,16 +18,16 @@ export class LumberClient {
         `Current Node version: ${process.version}`,
       )
     }
-    // Fail fast: validate key decodes to 32 bytes
+    // Fail fast: X25519 public keys are always 32 raw bytes
     const keyBytes = Buffer.from(config.key, 'base64')
     if (keyBytes.length !== 32) {
       throw new RangeError(
-        `Invalid encryption key: expected 32 bytes after base64 decode, got ${keyBytes.length}. ` +
-        `Pass the key exactly as returned by POST /apps.`,
+        `Invalid key: expected 32 bytes after base64 decode, got ${keyBytes.length}. ` +
+        `Pass the public_key exactly as returned by POST /apps.`,
       )
     }
     this.config = config
-    this.queue = new AsyncQueue(config.token, config.endpoint ?? 'https://lumber-api.vercel.app/logs')
+    this.queue = new AsyncQueue(config.key, config.endpoint ?? 'https://lumber-api.vercel.app/logs')
   }
 
   /**
