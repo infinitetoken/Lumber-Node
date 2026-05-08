@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@infinitetoken/lumber-kit": "^0.1.0"
+    "@infinitetoken/lumber-kit": "^0.1.1"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
