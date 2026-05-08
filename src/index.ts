@@ -27,7 +27,7 @@ export class LumberClient {
       )
     }
     this.config = config
-    this.queue = new AsyncQueue(config.token, config.endpoint)
+    this.queue = new AsyncQueue(config.token, config.endpoint ?? 'https://lumber-api.vercel.app/logs')
   }
 
   /**
