@@ -1,4 +1,4 @@
-import { LogLevel, LogPayload } from '@infinitetoken/lumber-kit'
+import { LogLevel, LogPrivate } from '@infinitetoken/lumber-kit'
 import { encryptPayload } from './encrypt'
 import { AsyncQueue } from './queue'
 import type { LumberConfig } from './types'
@@ -6,44 +6,61 @@ import type { LumberConfig } from './types'
 export { LumberConfig } from './types'
 export { LogLevel } from '@infinitetoken/lumber-kit'
 
+export interface LogInput {
+  message: string
+  level?: LogLevel
+  flagged?: boolean
+  private?: Record<string, unknown>
+}
+
 export class LumberClient {
   private readonly config: LumberConfig
   private readonly queue: AsyncQueue
 
   constructor(config: LumberConfig) {
-    // Fail fast: Node < 18 has no global fetch
     if (typeof fetch !== 'function') {
       throw new Error(
         `Lumber requires Node 18 or later (built-in fetch). ` +
         `Current Node version: ${process.version}`,
       )
     }
-    // Fail fast: X25519 public keys are always 32 raw bytes
     const keyBytes = Buffer.from(config.key, 'base64')
     if (keyBytes.length !== 32) {
       throw new RangeError(
-        `Invalid key: expected 32 bytes after base64 decode, got ${keyBytes.length}. ` +
-        `Pass the public_key exactly as returned by POST /apps.`,
+        `Invalid key: expected 32 bytes after base64 decode, got ${keyBytes.length}.`,
       )
     }
     this.config = config
-    this.queue = new AsyncQueue(config.key, config.endpoint ?? 'https://lumber-api.vercel.app/logs')
+    this.queue = new AsyncQueue(config.token, config.endpoint ?? 'https://lumber-api.vercel.app')
   }
 
   /**
-   * Encrypts payload and enqueues it for async HTTP send to the Lumber API.
-   * Returns immediately — never throws. Failures are retried internally.
+   * Enqueues a log for async HTTP delivery. Returns immediately — never throws.
+   * If input.private is provided it is AES-256-GCM encrypted before transmission.
    */
-  log(input: LogPayload & { level?: LogLevel }, flagged?: boolean): void {
-    const { level = LogLevel.Info, ...payload } = input
-    let encrypted: string
-    try {
-      encrypted = encryptPayload(payload, this.config.key)
-    } catch {
-      // encryptPayload only throws on key errors caught at construction — this is defensive
-      return
+  log(input: LogInput): void {
+    const { message, level = LogLevel.Info, flagged, private: privateData } = input
+
+    const body: Record<string, unknown> = { message, level }
+    if (flagged !== undefined) body.flagged = flagged
+
+    if (privateData !== undefined) {
+      let encrypted: string
+      try {
+        encrypted = encryptPayload(privateData, this.config.key)
+      } catch {
+        return
+      }
+      const buf = Buffer.from(encrypted, 'base64')
+      const logPrivate: LogPrivate = {
+        nonce: buf.subarray(0, 12).toString('base64'),
+        payload: buf.subarray(12).toString('base64'),
+        keyVersion: 1,
+      }
+      body.private = logPrivate
     }
-    this.queue.enqueue({ payload: encrypted, level, flagged })
+
+    this.queue.enqueue(body)
   }
 }
 

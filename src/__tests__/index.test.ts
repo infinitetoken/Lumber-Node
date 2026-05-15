@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
-import { LumberClient } from '../src/index'
+import { LumberClient } from '../index'
 import { LogLevel } from '@infinitetoken/lumber-kit'
 
 const VALID_KEY   = randomBytes(32).toString('base64')
@@ -52,24 +52,37 @@ describe('LumberClient.log()', () => {
     expect(elapsed).toBeLessThan(50)
   })
 
-  it('payload sent to fetch is base64 ciphertext, not plaintext', async () => {
+  it('message is sent as plaintext; no private field when none provided', async () => {
     const client = makeClient()
-    const secret = 'my-secret-message'
-    client.log({ message: secret, level: LogLevel.Info })
+    client.log({ message: 'hello', level: LogLevel.Info })
+    await new Promise((r) => setTimeout(r, 50))
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.message).toBe('hello')
+    expect(body.private).toBeUndefined()
+  })
+
+  it('private field is AES-256-GCM encrypted, not plaintext', async () => {
+    const client = makeClient()
+    const sensitiveData = { secret: 'top-secret-value' }
+    client.log({ message: 'something happened', level: LogLevel.Info, private: sensitiveData })
     await new Promise((r) => setTimeout(r, 50))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
     const body = JSON.parse(init.body as string)
-    // payload is base64 ciphertext — it must not contain the plaintext message
-    expect(body.payload).not.toContain(secret)
-    // and it should be a valid base64 string (no plaintext JSON structure)
-    expect(() => Buffer.from(body.payload, 'base64')).not.toThrow()
+    // message sent as plaintext
+    expect(body.message).toBe('something happened')
+    // private.payload is base64 ciphertext — must not contain sensitiveData in plaintext
+    expect(body.private.payload).not.toContain('top-secret-value')
+    expect(() => Buffer.from(body.private.payload, 'base64')).not.toThrow()
+    expect(typeof body.private.nonce).toBe('string')
+    expect(body.private.keyVersion).toBe(1)
   })
 })
 
 describe('runtime dependencies', () => {
   it('package.json dependencies contains only @infinitetoken/lumber-kit (our own types package)', () => {
-    const pkgPath = resolve(__dirname, '../package.json')
+    const pkgPath = resolve(__dirname, '../../package.json')
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
     const deps = Object.keys(pkg.dependencies ?? {})
     // Only our own types package is allowed — no third-party utility dependencies

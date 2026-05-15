@@ -1,4 +1,4 @@
-import { AsyncQueue } from '../src/queue'
+import { AsyncQueue } from '../queue'
 
 const TOKEN = 'test-token'
 const ENDPOINT = 'https://example.com'

@@ -1,5 +1,5 @@
 interface QueueItem {
-  body: { payload: string; level: number; flagged?: boolean }
+  body: Record<string, unknown>
   attempts: number
 }
 
@@ -7,11 +7,11 @@ export class AsyncQueue {
   private readonly queue: QueueItem[] = []
   private draining = false
   private readonly maxAttempts = 5
-  private readonly appKey: string
+  private readonly token: string
   private readonly endpoint: string
 
-  constructor(appKey: string, endpoint: string) {
-    this.appKey = appKey
+  constructor(token: string, endpoint: string) {
+    this.token = token
     this.endpoint = endpoint
   }
 
@@ -49,7 +49,7 @@ export class AsyncQueue {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.appKey}`,
+          Authorization: `Bearer ${this.token}`,
         },
         body: JSON.stringify(item.body),
       })
