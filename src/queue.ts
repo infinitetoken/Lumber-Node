@@ -23,6 +23,21 @@ export class AsyncQueue {
     }
   }
 
+  /** Resolves when the queue is empty and all in-flight sends have settled. */
+  flush(): Promise<void> {
+    if (!this.draining && this.queue.length === 0) return Promise.resolve()
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!this.draining && this.queue.length === 0) {
+          resolve()
+        } else {
+          setTimeout(check, 50)
+        }
+      }
+      check()
+    })
+  }
+
   private async drain(): Promise<void> {
     this.draining = true
     while (this.queue.length > 0) {
@@ -53,8 +68,10 @@ export class AsyncQueue {
         },
         body: JSON.stringify(item.body),
       })
+      if (!res.ok) console.warn(`[lumber] send failed: HTTP ${res.status}`)
       return res.ok
-    } catch {
+    } catch (err) {
+      console.warn(`[lumber] send error:`, err)
       return false
     }
   }

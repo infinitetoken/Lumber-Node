@@ -1,15 +1,20 @@
 {
   "name": "@infinitetoken/lumber",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "TypeScript Node.js logging plugin for Lumber — AES-256-GCM encrypted, async queue, zero dependencies",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/cjs/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/cjs/index.d.ts",
-      "import": "./dist/cjs/index.js",
-      "require": "./dist/cjs/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     }
   },
   "files": [
@@ -22,7 +27,7 @@
   "scripts": {
     "build": "npm run build:cjs && npm run build:esm",
     "build:cjs": "tsc -p tsconfig.cjs.json",
-    "build:esm": "tsc -p tsconfig.esm.json && echo '{\"type\": \"module\"}' > dist/esm/package.json",
+    "build:esm": "tsc -p tsconfig.esm.json && echo '{\"type\": \"module\"}' > dist/esm/package.json && node scripts/fix-esm-imports.mjs",
     "clean": "rm -rf dist",
     "test": "jest",
     "prepublishOnly": "npm run build"
@@ -33,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@infinitetoken/lumber-kit": "^0.3.3"
+    "@infinitetoken/lumber-kit": "^0.3.6"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
