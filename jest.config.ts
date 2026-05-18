@@ -9,6 +9,7 @@ const config: Config = {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
+  forceExit: true,
 }
 
 export default config

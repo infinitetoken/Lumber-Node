@@ -395,11 +395,12 @@ describe('performance', () => {
   })
   afterEach(() => fetchSpy.mockRestore())
 
-  it('1000 info() calls complete in under 50ms (non-blocking)', () => {
+  it('1000 info() calls complete in under 50ms (non-blocking)', async () => {
     const client = makeClient()
     const start = Date.now()
     for (let i = 0; i < 1000; i++) client.info(`msg ${i}`)
     expect(Date.now() - start).toBeLessThan(50)
+    await client.flush()
   })
 })
 
