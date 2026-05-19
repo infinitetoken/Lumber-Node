@@ -16,7 +16,7 @@
     "type": "git",
     "url": "git+https://github.com/infinitetoken/lumber-node.git"
   },
-  "license": "ISC",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "Jay Deaton",
   "sideEffects": false,
   "type": "commonjs",
