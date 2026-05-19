@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 interface QueueItem {
   body: Record<string, unknown>
   attempts: number
@@ -64,9 +65,9 @@ export class AsyncQueue {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.token}`,
+          Authorization: `Bearer ${this.token}`
         },
-        body: JSON.stringify(item.body),
+        body: JSON.stringify(item.body)
       })
       if (!res.ok) console.warn(`[lumber] send failed: HTTP ${res.status}`)
       return res.ok

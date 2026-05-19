@@ -19,14 +19,16 @@ export interface LumberConfig {
    *   data   — append extras after message (default false)
    *   pretty — pretty-print extras with indentation (default false, implies data)
    */
-  console?: boolean | {
-    levels?: Partial<Record<LogLevelName, boolean>>
-    prefix?: boolean
-    color?: boolean
-    data?: boolean
-    pretty?: boolean
-    timestamp?: boolean | 'time' | 'iso' | 'relative'
-  }
+  console?:
+    | boolean
+    | {
+        levels?: Partial<Record<LogLevelName, boolean>>
+        prefix?: boolean
+        color?: boolean
+        data?: boolean
+        pretty?: boolean
+        timestamp?: boolean | 'time' | 'iso' | 'relative'
+      }
 
   /**
    * Auto-attach environment context (hostname, pid, NODE_ENV) to every log.
@@ -49,9 +51,14 @@ export interface LumberConfig {
    *   add      — extend the built-in list with your own key names
    *   ignore   — remove keys from the built-in list
    */
-  sensitiveKeys?: false | 'warn' | 'redact' | 'encrypt' | {
-    behavior?: 'warn' | 'redact' | 'encrypt'
-    add?:      string[]
-    ignore?:   string[]
-  }
+  sensitiveKeys?:
+    | false
+    | 'warn'
+    | 'redact'
+    | 'encrypt'
+    | {
+        behavior?: 'warn' | 'redact' | 'encrypt'
+        add?: string[]
+        ignore?: string[]
+      }
 }

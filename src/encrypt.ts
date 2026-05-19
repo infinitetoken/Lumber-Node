@@ -8,9 +8,7 @@ import crypto from 'node:crypto'
 export function encryptPayload(data: Record<string, unknown>, keyBase64: string): string {
   const key = Buffer.from(keyBase64, 'base64')
   if (key.length !== 32) {
-    throw new RangeError(
-      `Invalid key: expected 32 bytes after base64 decode, got ${key.length}`,
-    )
+    throw new RangeError(`Invalid key: expected 32 bytes after base64 decode, got ${key.length}`)
   }
 
   const iv = crypto.randomBytes(12)
