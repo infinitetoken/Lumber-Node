@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import os from 'node:os'
 
-import { LogContext, LogLevel, LogLevelName, LogPrivate } from '@infinitetoken/lumber-kit'
+import { LogContext, LogEncrypted, LogLevel, LogLevelName, LogPayload } from '@infinitetoken/lumber-kit'
 
 import { encryptPayload } from './encrypt'
 import { AsyncQueue } from './queue'
@@ -24,7 +24,6 @@ const LEVEL_COLORS: Record<LogLevelName, string> = {
 }
 const RESET = '\x1b[0m'
 
-// Padded to the longest level name (fatal = 5 chars) so message column aligns
 const LEVEL_BADGE: Record<LogLevelName, string> = {
   debug: '[DEBUG]',
   info: '[INFO] ',
@@ -51,63 +50,13 @@ function formatTimestamp(mode: boolean | 'time' | 'iso' | 'relative'): string {
   return `${hh}:${mm}:${ss}.${ms} `
 }
 
-const SENSITIVE_KEYS_DEFAULT = new Set([
-  // Auth / credentials
-  'password',
-  'passwd',
-  'pwd',
-  'pass',
-  'secret',
-  'clientsecret',
-  'token',
-  'accesstoken',
-  'refreshtoken',
-  'idtoken',
-  'authtoken',
-  'bearertoken',
-  'sessiontoken',
-  'apikey',
-  'privatekey',
-  'signingkey',
-  'sessionid',
-  'sid',
-  'otp',
-  'mfa',
-  'totp',
-  // PII
-  'ssn',
-  'socialsecuritynumber',
-  'creditcard',
-  'cardnumber',
-  'cvv',
-  'cvc',
-  'email',
-  'emailaddress',
-  'phone',
-  'phonenumber',
-  'mobile',
-  'dob',
-  'dateofbirth',
-  'birthday',
-  // Infrastructure
-  'connectionstring',
-  'databaseurl',
-  'dburl',
-  'dbpassword',
-  'databasepassword'
-])
-
-function normalizeKey(key: string): string {
-  return key.toLowerCase().replace(/[-_\s]/g, '')
-}
-
 export { LumberConfig } from './types'
 export { LogLevel } from '@infinitetoken/lumber-kit'
 
 export interface LogData {
-  flagged?: boolean
+  requestId?: string
+  traceId?: string
   context?: LogContext
-  private?: Record<string, unknown>
   metadata?: Record<string, unknown>
   [key: string]: unknown
 }
@@ -116,44 +65,18 @@ export class LumberClient {
   private readonly config: LumberConfig
   private readonly queue: AsyncQueue
   private readonly baseContext: Partial<LogContext>
-  private readonly sensitiveMode: false | 'warn' | 'redact' | 'encrypt'
-  private readonly sensitiveKeySet: Set<string>
 
   constructor(config: LumberConfig) {
     if (typeof fetch !== 'function') {
-      throw new Error(`Lumber requires Node 18 or later (built-in fetch). ` + `Current Node version: ${process.version}`)
+      throw new Error(`Lumber requires Node 18 or later (built-in fetch). Current Node version: ${process.version}`)
     }
-    if (config.encryptionKey !== undefined) {
-      const keyBytes = Buffer.from(config.encryptionKey, 'base64')
-      if (keyBytes.length !== 32) {
-        throw new RangeError(`Invalid encryptionKey: expected 32 bytes after base64 decode, got ${keyBytes.length}.`)
-      }
+    const keyBytes = Buffer.from(config.encryptionKey, 'base64')
+    if (keyBytes.length !== 32) {
+      throw new RangeError(`Invalid encryptionKey: expected 32 bytes after base64 decode, got ${keyBytes.length}.`)
     }
     this.config = config
     this.queue = new AsyncQueue(config.apiKey, config.endpoint ?? 'https://lumber-api.vercel.app')
     this.baseContext = this.buildBaseContext()
-    this.sensitiveMode = this.buildSensitiveMode()
-    this.sensitiveKeySet = this.buildSensitiveKeySet()
-  }
-
-  private buildSensitiveMode(): false | 'warn' | 'redact' | 'encrypt' {
-    const cfg = this.config.sensitiveKeys
-    if (cfg === false) return false
-    const def = this.config.encryptionKey ? 'encrypt' : 'redact'
-    if (cfg === undefined) return def
-    if (typeof cfg === 'string') return cfg
-    return cfg.behavior ?? def
-  }
-
-  private buildSensitiveKeySet(): Set<string> {
-    const cfg = this.config.sensitiveKeys
-    const set = new Set(SENSITIVE_KEYS_DEFAULT)
-    if (cfg === false) return new Set()
-    if (typeof cfg === 'object') {
-      for (const k of cfg.add ?? []) set.add(normalizeKey(k))
-      for (const k of cfg.ignore ?? []) set.delete(normalizeKey(k))
-    }
-    return set
   }
 
   private buildBaseContext(): Partial<LogContext> {
@@ -184,7 +107,7 @@ export class LumberClient {
     return { code: match[1], line: parseInt(match[2], 10), column: parseInt(match[3], 10) }
   }
 
-  private maybeConsoleLog(level: LogLevel, message: string, body: Record<string, unknown>): void {
+  private maybeConsoleLog(level: LogLevel, message: string, payload: LogPayload): void {
     const cfg = this.config.console
     if (!cfg) return
     const name = logLevelToName[level] as LogLevelName
@@ -210,7 +133,7 @@ export class LumberClient {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { message: _m, level: _l, private: _p, ...extras } = body
+    const { message: _m, level: _l, ...extras } = payload
     if (Object.keys(extras).length === 0) {
       console[method](out)
       return
@@ -224,73 +147,30 @@ export class LumberClient {
   }
 
   private enqueueLog(message: string, level: LogLevel, data?: LogData): void {
-    const { flagged, context, private: privateData, metadata, ...rest } = data ?? {}
+    const { requestId, traceId, context, metadata, ...rest } = data ?? {}
 
-    let mergedMetadata: Record<string, unknown> | undefined = Object.keys(rest).length > 0 ? { ...rest, ...(metadata ?? {}) } : metadata
-
-    // Sensitive key detection
-    let autoPrivate: Record<string, unknown> | undefined
-
-    if (this.sensitiveMode !== false && mergedMetadata !== undefined) {
-      const found = Object.keys(mergedMetadata).filter((k) => this.sensitiveKeySet.has(normalizeKey(k)))
-      if (found.length > 0) {
-        if (this.sensitiveMode === 'warn') {
-          console.warn(`[lumber] sensitive key(s) in metadata: ${found.join(', ')} — use the private field or set encryptionKey`)
-        } else {
-          const mutable: Record<string, unknown> = { ...mergedMetadata }
-          if (this.sensitiveMode === 'redact') {
-            for (const k of found) mutable[k] = '[redacted]'
-          } else {
-            // encrypt
-            if (!this.config.encryptionKey) {
-              console.warn(`[lumber] sensitive key(s) in metadata: ${found.join(', ')} — set encryptionKey to enable auto-encryption`)
-            } else {
-              autoPrivate = {}
-              for (const k of found) {
-                autoPrivate[k] = mutable[k]
-                delete mutable[k]
-              }
-            }
-          }
-          mergedMetadata = Object.keys(mutable).length > 0 ? mutable : undefined
-        }
-      }
-    }
-
-    const body: Record<string, unknown> = { message, level }
-    if (flagged !== undefined) body.flagged = flagged
-    if (mergedMetadata !== undefined) body.metadata = mergedMetadata
+    const mergedMetadata: Record<string, unknown> | undefined = Object.keys(rest).length > 0 ? { ...rest, ...(metadata ?? {}) } : metadata
 
     const autoCtx = { ...this.baseContext, ...this.getCallerContext() }
     const mergedCtx = Object.keys(autoCtx).length > 0 ? { ...autoCtx, ...(context ?? {}) } : context
-    if (mergedCtx !== undefined) body.context = mergedCtx
 
-    const combinedPrivate = autoPrivate || privateData ? { ...(autoPrivate ?? {}), ...(privateData ?? {}) } : undefined
+    const payload: LogPayload = { level, message }
+    if (requestId !== undefined) payload.requestId = requestId
+    if (traceId !== undefined) payload.traceId = traceId
+    if (mergedCtx !== undefined) payload.context = mergedCtx
+    if (mergedMetadata !== undefined) payload.metadata = mergedMetadata
 
-    if (combinedPrivate !== undefined) {
-      if (!this.config.encryptionKey) {
-        console.warn('[lumber] private field ignored — no encryptionKey configured')
-      } else {
-        let encrypted: string | undefined
-        try {
-          encrypted = encryptPayload(combinedPrivate, this.config.encryptionKey)
-        } catch {
-          console.warn('[lumber] private field ignored — encryption failed')
-        }
-        if (encrypted !== undefined) {
-          const buf = Buffer.from(encrypted, 'base64')
-          const logPrivate: LogPrivate = {
-            nonce: buf.subarray(0, 12).toString('base64'),
-            payload: buf.subarray(12).toString('base64'),
-            keyVersion: 1
-          }
-          body.private = logPrivate
-        }
-      }
+    this.maybeConsoleLog(level, message, payload)
+
+    const encrypted = encryptPayload(payload, this.config.encryptionKey)
+    const buf = Buffer.from(encrypted, 'base64')
+    const logEncrypted: LogEncrypted = {
+      nonce: buf.subarray(0, 12).toString('base64'),
+      payload: buf.subarray(12).toString('base64'),
+      keyVersion: 1
     }
 
-    this.maybeConsoleLog(level, message, body)
-    this.queue.enqueue(body)
+    this.queue.enqueue({ level, encrypted: logEncrypted })
   }
 
   log(message: string, data?: LogData): void {

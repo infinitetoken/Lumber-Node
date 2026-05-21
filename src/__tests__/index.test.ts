@@ -1,20 +1,33 @@
 import { readFileSync } from 'node:fs'
-import { randomBytes } from 'node:crypto'
+import { createDecipheriv, randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
 import { LumberClient } from '../index'
-import { LogLevel } from '@infinitetoken/lumber-kit'
+import { LogLevel, LogPayload } from '@infinitetoken/lumber-kit'
 
 const VALID_ENCRYPTION_KEY = randomBytes(32).toString('base64')
 const VALID_API_KEY        = 'test-token'
 const ENDPOINT             = 'https://example.com'
 
-function makeClient(_overrides: unknown = {}, cfg: Record<string, unknown> = {}) {
+function makeClient(cfg: Record<string, unknown> = {}) {
   return new LumberClient({ apiKey: VALID_API_KEY, encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT, context: false, ...cfg })
 }
 
 function fetchedBody(spy: jest.SpyInstance, callIndex = 0): Record<string, unknown> {
   const [, init] = spy.mock.calls[callIndex] as [string, RequestInit]
   return JSON.parse(init.body as string)
+}
+
+function decryptedPayload(spy: jest.SpyInstance, callIndex = 0): LogPayload {
+  const body = fetchedBody(spy, callIndex)
+  const enc = body.encrypted as { nonce: string; payload: string; keyVersion: number }
+  const nonce      = Buffer.from(enc.nonce, 'base64')
+  const combined   = Buffer.from(enc.payload, 'base64')
+  const authTag    = combined.subarray(0, 16)
+  const ciphertext = combined.subarray(16)
+  const decipher   = createDecipheriv('aes-256-gcm', Buffer.from(VALID_ENCRYPTION_KEY, 'base64'), nonce)
+  decipher.setAuthTag(authTag)
+  const plain = decipher.update(ciphertext, undefined, 'utf8') + decipher.final('utf8')
+  return JSON.parse(plain) as LogPayload
 }
 
 // ─── Constructor ──────────────────────────────────────────────────────────────
@@ -58,16 +71,28 @@ describe('level shorthand methods', () => {
     const client = makeClient()
     ;(client[method] as (m: string) => void)('test message')
     await new Promise((r) => setTimeout(r, 50))
-    const body = fetchedBody(fetchSpy)
-    expect(body.message).toBe('test message')
-    expect(body.level).toBe(expectedLevel)
+    const payload = decryptedPayload(fetchSpy)
+    expect(payload.message).toBe('test message')
+    expect(payload.level).toBe(expectedLevel)
   })
 
   it('log() defaults to Info level', async () => {
     const client = makeClient()
     client.log('default level')
     await new Promise((r) => setTimeout(r, 50))
-    expect(fetchedBody(fetchSpy).level).toBe(LogLevel.Info)
+    expect(decryptedPayload(fetchSpy).level).toBe(LogLevel.Info)
+  })
+
+  it('body contains only level and encrypted fields', async () => {
+    const client = makeClient()
+    client.info('msg')
+    await new Promise((r) => setTimeout(r, 50))
+    const body = fetchedBody(fetchSpy)
+    expect(Object.keys(body).sort()).toEqual(['encrypted', 'level'])
+    expect(typeof (body.level as any)).toBe('number')
+    expect(typeof (body.encrypted as any).nonce).toBe('string')
+    expect(typeof (body.encrypted as any).payload).toBe('string')
+    expect((body.encrypted as any).keyVersion).toBe(1)
   })
 })
 
@@ -81,44 +106,50 @@ describe('LogData field spreading', () => {
   })
   afterEach(() => fetchSpy.mockRestore())
 
-  it('known fields pass through to correct body keys', async () => {
+  it('known fields pass through into encrypted payload', async () => {
     const client = makeClient()
-    client.warn('msg', { flagged: true, context: { code: 'app.ts' }, metadata: { version: 2 } })
+    client.warn('msg', { requestId: 'req-123', context: { code: 'app.ts' }, metadata: { version: 2 } })
     await new Promise((r) => setTimeout(r, 50))
-    const body = fetchedBody(fetchSpy)
-    expect(body.flagged).toBe(true)
-    expect((body.context as any).code).toBe('app.ts')
-    expect((body.metadata as any).version).toBe(2)
+    const payload = decryptedPayload(fetchSpy)
+    expect(payload.requestId).toBe('req-123')
+    expect(payload.context?.code).toBe('app.ts')
+    expect(payload.metadata?.version).toBe(2)
   })
 
   it('unknown extra keys are merged into metadata', async () => {
     const client = makeClient()
     client.info('msg', { userId: '123', action: 'login' })
     await new Promise((r) => setTimeout(r, 50))
-    const body = fetchedBody(fetchSpy)
-    expect((body.metadata as any).userId).toBe('123')
-    expect((body.metadata as any).action).toBe('login')
+    const payload = decryptedPayload(fetchSpy)
+    expect(payload.metadata?.userId).toBe('123')
+    expect(payload.metadata?.action).toBe('login')
   })
 
   it('explicit metadata wins over extra-key collision', async () => {
     const client = makeClient()
     client.info('msg', { userId: 'from-extra', metadata: { userId: 'from-metadata' } })
     await new Promise((r) => setTimeout(r, 50))
-    const body = fetchedBody(fetchSpy)
-    expect((body.metadata as any).userId).toBe('from-metadata')
+    expect(decryptedPayload(fetchSpy).metadata?.userId).toBe('from-metadata')
   })
 
-  it('no metadata key in body when no extra data provided', async () => {
+  it('no metadata in payload when no extra data provided', async () => {
     const client = makeClient()
     client.info('plain message')
     await new Promise((r) => setTimeout(r, 50))
-    expect(fetchedBody(fetchSpy).metadata).toBeUndefined()
+    expect(decryptedPayload(fetchSpy).metadata).toBeUndefined()
+  })
+
+  it('traceId is included in encrypted payload', async () => {
+    const client = makeClient()
+    client.info('msg', { traceId: 'trace-abc' })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(decryptedPayload(fetchSpy).traceId).toBe('trace-abc')
   })
 })
 
-// ─── Private encryption ───────────────────────────────────────────────────────
+// ─── Encryption structure ─────────────────────────────────────────────────────
 
-describe('private field encryption', () => {
+describe('encryption', () => {
   let fetchSpy: jest.SpyInstance
 
   beforeEach(() => {
@@ -126,136 +157,25 @@ describe('private field encryption', () => {
   })
   afterEach(() => fetchSpy.mockRestore())
 
-  it('encrypts private data — plaintext not present in payload', async () => {
+  it('encrypted payload round-trips correctly', async () => {
     const client = makeClient()
-    client.info('something happened', { private: { secret: 'top-secret-value' } })
+    client.info('secret message', { metadata: { key: 'value' } })
     await new Promise((r) => setTimeout(r, 50))
     const body = fetchedBody(fetchSpy)
-    expect(body.message).toBe('something happened')
-    expect((body.private as any).payload).not.toContain('top-secret-value')
-    expect(typeof (body.private as any).nonce).toBe('string')
-    expect((body.private as any).keyVersion).toBe(1)
+    expect((body.encrypted as any).payload).not.toContain('secret message')
+    const payload = decryptedPayload(fetchSpy)
+    expect(payload.message).toBe('secret message')
+    expect(payload.metadata?.key).toBe('value')
   })
 
-  it('no private key in body when none provided', async () => {
+  it('each log produces a unique nonce', async () => {
     const client = makeClient()
-    client.info('hello')
+    client.info('first')
+    client.info('second')
     await new Promise((r) => setTimeout(r, 50))
-    expect(fetchedBody(fetchSpy).private).toBeUndefined()
-  })
-
-  it('warns and omits private field when no encryptionKey configured', async () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
-    const client = new LumberClient({ apiKey: VALID_API_KEY, endpoint: ENDPOINT, context: false })
-    client.info('msg', { private: { secret: 'oops' } })
-    await new Promise((r) => setTimeout(r, 50))
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no encryptionKey'))
-    expect(fetchedBody(fetchSpy).private).toBeUndefined()
-    expect(fetchedBody(fetchSpy).message).toBe('msg') // log still sent
-    warnSpy.mockRestore()
-  })
-})
-
-// ─── Sensitive key detection ──────────────────────────────────────────────────
-
-describe('sensitive key detection', () => {
-  let fetchSpy: jest.SpyInstance
-  let warnSpy: jest.SpyInstance
-
-  beforeEach(() => {
-    fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
-    warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
-  })
-  afterEach(() => { fetchSpy.mockRestore(); warnSpy.mockRestore() })
-
-  it('redacts by default when no encryptionKey and sensitive key found', async () => {
-    const client = new LumberClient({ apiKey: VALID_API_KEY, endpoint: ENDPOINT, context: false })
-    client.info('msg', { password: 'hunter2' })
-    await new Promise((r) => setTimeout(r, 50))
-    expect(warnSpy).not.toHaveBeenCalled()
-    expect((fetchedBody(fetchSpy).metadata as any).password).toBe('[redacted]')
-  })
-
-  it('auto-encrypts by default when encryptionKey is set', async () => {
-    const client = makeClient() // encryptionKey present → default 'encrypt'
-    client.info('msg', { password: 'hunter2', userId: 'abc' })
-    await new Promise((r) => setTimeout(r, 50))
-    const body = fetchedBody(fetchSpy)
-    expect(warnSpy).not.toHaveBeenCalled()
-    expect((body.metadata as any)?.password).toBeUndefined()  // removed from metadata
-    expect((body.metadata as any).userId).toBe('abc')         // non-sensitive stays
-    expect(typeof (body.private as any).nonce).toBe('string') // encrypted
-  })
-
-  it('redact mode replaces value with [redacted]', async () => {
-    const client = makeClient({}, { sensitiveKeys: 'redact' })
-    client.info('msg', { email: 'user@example.com', userId: '123' })
-    await new Promise((r) => setTimeout(r, 50))
-    const metadata = fetchedBody(fetchSpy).metadata as any
-    expect(metadata.email).toBe('[redacted]')
-    expect(metadata.userId).toBe('123')
-  })
-
-  it('warn mode explicitly set — warns, value unchanged', async () => {
-    const client = makeClient({}, { sensitiveKeys: 'warn' })
-    client.info('msg', { token: 'abc123' })
-    await new Promise((r) => setTimeout(r, 50))
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('token'))
-    expect((fetchedBody(fetchSpy).metadata as any).token).toBe('abc123')
-  })
-
-  it('sensitiveKeys: false disables detection', async () => {
-    const client = makeClient({}, { sensitiveKeys: false })
-    client.info('msg', { password: 'hunter2' })
-    await new Promise((r) => setTimeout(r, 50))
-    expect(warnSpy).not.toHaveBeenCalled()
-    expect((fetchedBody(fetchSpy).metadata as any).password).toBe('hunter2')
-  })
-
-  it('non-sensitive keys are unaffected', async () => {
-    const client = makeClient()
-    client.info('msg', { userId: '123', action: 'login' })
-    await new Promise((r) => setTimeout(r, 50))
-    expect(warnSpy).not.toHaveBeenCalled()
-    const metadata = fetchedBody(fetchSpy).metadata as any
-    expect(metadata.userId).toBe('123')
-    expect(metadata.action).toBe('login')
-  })
-
-  it('normalizes key variants — access_token, accessToken, ACCESSTOKEN all match', async () => {
-    const client = new LumberClient({ apiKey: VALID_API_KEY, endpoint: ENDPOINT, context: false, sensitiveKeys: 'warn' })
-    client.info('a', { access_token: 'x' })
-    client.info('b', { accessToken: 'x' })
-    client.info('c', { ACCESSTOKEN: 'x' })
-    await new Promise((r) => setTimeout(r, 50))
-    expect(warnSpy).toHaveBeenCalledTimes(3)
-  })
-
-  it('add: extends the built-in list with custom keys', async () => {
-    const client = makeClient({}, { sensitiveKeys: { behavior: 'redact', add: ['legacyPin', 'internalToken'] } })
-    client.info('msg', { legacyPin: '1234', userId: 'abc' })
-    await new Promise((r) => setTimeout(r, 50))
-    const metadata = fetchedBody(fetchSpy).metadata as any
-    expect(metadata.legacyPin).toBe('[redacted]')
-    expect(metadata.userId).toBe('abc')
-  })
-
-  it('ignore: removes a key from the built-in list', async () => {
-    const client = makeClient({}, { sensitiveKeys: { behavior: 'redact', ignore: ['email'] } })
-    client.info('msg', { email: 'user@example.com', password: 'secret' })
-    await new Promise((r) => setTimeout(r, 50))
-    const metadata = fetchedBody(fetchSpy).metadata as any
-    expect(metadata.email).toBe('user@example.com') // not redacted
-    expect(metadata.password).toBe('[redacted]')    // still caught
-  })
-
-  it('auto-encrypted sensitive keys merge with explicit private field', async () => {
-    const client = makeClient()
-    client.info('msg', { password: 'secret', private: { extra: 'data' } })
-    await new Promise((r) => setTimeout(r, 50))
-    const body = fetchedBody(fetchSpy)
-    expect((body.metadata as any)?.password).toBeUndefined()
-    expect(typeof (body.private as any).nonce).toBe('string')
+    const nonce1 = (fetchedBody(fetchSpy, 0).encrypted as any).nonce
+    const nonce2 = (fetchedBody(fetchSpy, 1).encrypted as any).nonce
+    expect(nonce1).not.toBe(nonce2)
   })
 })
 
@@ -274,7 +194,7 @@ describe('console mirroring', () => {
     const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {})
-    const client = makeClient({}, { console: true })
+    const client = makeClient({ console: true })
     client.info('hello info', { userId: '123' })
     client.warn('hello warn')
     client.error('hello error')
@@ -290,7 +210,7 @@ describe('console mirroring', () => {
 
   it('console: { data: true } appends extras as second arg', () => {
     const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {})
-    const client = makeClient({}, { console: { data: true } })
+    const client = makeClient({ console: { data: true } })
     client.info('msg', { userId: '123' })
     expect(infoSpy).toHaveBeenCalledWith('[INFO]  msg', expect.objectContaining({ metadata: { userId: '123' } }))
     infoSpy.mockRestore()
@@ -298,7 +218,7 @@ describe('console mirroring', () => {
 
   it('console: { pretty: true } outputs indented JSON on a new line', () => {
     const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {})
-    const client = makeClient({}, { console: { pretty: true } })
+    const client = makeClient({ console: { pretty: true } })
     client.info('msg', { userId: '123' })
     const call = infoSpy.mock.calls[0][0] as string
     expect(call).toMatch(/^\[INFO\]  msg\n\{/)
@@ -309,7 +229,7 @@ describe('console mirroring', () => {
   it('console: { levels: { warn: true } } only fires for that level', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
     const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {})
-    const client = makeClient({}, { console: { levels: { warn: true } } })
+    const client = makeClient({ console: { levels: { warn: true } } })
     client.info('should be silent')
     client.warn('should log')
     expect(infoSpy).not.toHaveBeenCalled()
@@ -320,7 +240,7 @@ describe('console mirroring', () => {
   it('console: { levels: { error: true }, data: true } — level filter + data combined', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
-    const client = makeClient({}, { console: { levels: { error: true }, data: true } })
+    const client = makeClient({ console: { levels: { error: true }, data: true } })
     client.warn('ignored', { x: 1 })
     client.error('shown', { x: 1 })
     expect(warnSpy).not.toHaveBeenCalled()
@@ -343,32 +263,32 @@ describe('auto-context', () => {
     const client = new LumberClient({ apiKey: VALID_API_KEY, encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT })
     client.info('msg')
     await new Promise((r) => setTimeout(r, 50))
-    const ctx = fetchedBody(fetchSpy).context as any
+    const ctx = decryptedPayload(fetchSpy).context as any
     expect(ctx.pid).toBe(process.pid)
     expect(typeof ctx.hostname).toBe('string')
   })
 
   it('context: false disables auto-context entirely', async () => {
-    const client = makeClient() // context: false
+    const client = makeClient()
     client.info('msg')
     await new Promise((r) => setTimeout(r, 50))
-    expect(fetchedBody(fetchSpy).context).toBeUndefined()
+    expect(decryptedPayload(fetchSpy).context).toBeUndefined()
   })
 
   it('user-supplied context is merged on top of auto-context', async () => {
     const client = new LumberClient({ apiKey: VALID_API_KEY, encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT })
     client.info('msg', { context: { code: 'custom.ts' } })
     await new Promise((r) => setTimeout(r, 50))
-    const ctx = fetchedBody(fetchSpy).context as any
+    const ctx = decryptedPayload(fetchSpy).context as any
     expect(ctx.code).toBe('custom.ts')
-    expect(ctx.pid).toBe(process.pid) // auto-context still present
+    expect(ctx.pid).toBe(process.pid)
   })
 
   it('context: { caller: true } adds code/line/column', async () => {
     const client = new LumberClient({ apiKey: VALID_API_KEY, encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT, context: { caller: true } })
     client.info('msg')
     await new Promise((r) => setTimeout(r, 50))
-    const ctx = fetchedBody(fetchSpy).context as any
+    const ctx = decryptedPayload(fetchSpy).context as any
     expect(typeof ctx.code).toBe('string')
     expect(typeof ctx.line).toBe('number')
     expect(typeof ctx.column).toBe('number')

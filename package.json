@@ -55,7 +55,7 @@
     "preversion": "npm run lint && npm test"
   },
   "dependencies": {
-    "@infinitetoken/lumber-kit": "^0.3.6"
+    "@infinitetoken/lumber-kit": "^0.4.20"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

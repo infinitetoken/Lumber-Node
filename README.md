@@ -1,6 +1,8 @@
 # @infinitetoken/lumber
 
-Node.js client for [Lumber](https://www.infinitetoken.com/apps/lumber) — cloud logging with AES-256-GCM encrypted private fields, async queue, and zero runtime dependencies.
+Node.js client for [Lumber](https://www.infinitetoken.com/apps/lumber) — cloud logging with full E2E encryption, async queue, and zero runtime dependencies.
+
+All log content is encrypted with AES-256-GCM before leaving the process. The API stores only opaque blobs — it cannot read your logs.
 
 ## Installation
 
@@ -23,15 +25,21 @@ const { default: lumber } = require('@infinitetoken/lumber')
 
 lumber.config({
   apiKey:        process.env.LUMBER_API_KEY,
-  encryptionKey: process.env.LUMBER_ENCRYPTION_KEY, // optional — only needed if you use the private field
+  encryptionKey: process.env.LUMBER_ENCRYPTION_KEY, // required — 32-byte key, base64-encoded
 })
 
 lumber.info('Server started', { port: 3000 })
-lumber.warn('Rate limit approaching', { flagged: true, userId: '123' })
-lumber.error('Payment failed', { context: { traceId: 'abc' }, orderId: '456' })
+lumber.warn('Rate limit approaching', { requestId: 'req-123', metadata: { userId: '456' } })
+lumber.error('Payment failed', { traceId: 'trace-abc', orderId: '789' })
 
 // Drain the queue before process exit
 await lumber.flush()
+```
+
+Generate an encryption key:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
 ## Log methods
@@ -48,30 +56,30 @@ await lumber.flush()
 
 ## LogData
 
-The second argument is an optional `LogData` object. Named fields are routed to specific parts of the wire payload; any other keys are merged into `metadata`.
+The second argument is an optional `LogData` object. Named fields are routed to specific parts of the encrypted payload; any other keys are merged into `metadata`.
 
 ```ts
 lumber.info('User action', {
-  flagged:  true,                   // → body.flagged
-  context:  { traceId: 'abc' },     // → body.context (merged with auto-context)
-  private:  { ssn: '000-00-0000' }, // → encrypted body.private
-  metadata: { version: 2 },         // → body.metadata
-  userId:   '123',                  // → body.metadata.userId (extra key)
-  action:   'login',                // → body.metadata.action (extra key)
+  requestId: 'req-abc',          // → payload.requestId
+  traceId:   'trace-xyz',        // → payload.traceId
+  context:   { code: 'app.ts' }, // → payload.context (merged with auto-context)
+  metadata:  { version: 2 },     // → payload.metadata
+  userId:    '123',              // → payload.metadata.userId (extra key)
+  action:    'login',            // → payload.metadata.action (extra key)
 })
 ```
 
-Explicit `metadata` keys win over colliding extra keys.
+Explicit `metadata` keys win over colliding extra keys. The entire payload — including `message`, `requestId`, `context`, and `metadata` — is encrypted before it leaves the process.
 
 ## Config
 
 ```ts
 lumber.config({
-  apiKey:         string,   // API key from Lumber app settings
-  encryptionKey?: string,   // 32-byte AES key, base64-encoded — required only if using the private field
-  endpoint?:      string,   // override API base URL (default: official Lumber API)
-  console?:       boolean | ConsoleConfig,
-  context?:       boolean | ContextConfig,
+  apiKey:        string,  // API key from Lumber app settings
+  encryptionKey: string,  // 32-byte AES key, base64-encoded — required
+  endpoint?:     string,  // override API base URL (default: official Lumber API)
+  console?:      boolean | ConsoleConfig,
+  context?:      boolean | ContextConfig,
 })
 ```
 
@@ -87,15 +95,15 @@ lumber.config({ ..., console: true })
 lumber.config({
   ...,
   console: {
-    levels:     { warn: true, error: true, fatal: true }, // omit = all levels
-    prefix:     true,      // show [LEVEL] badge (default: true)
-    color:      true,      // ANSI color when TTY (default: true, auto-detected)
-    data:       true,      // append metadata/context as second console arg
-    pretty:     true,      // pretty-print data with indentation (implies data)
-    timestamp:  true,      // prepend HH:MM:SS.mmm timestamp
-    // timestamp: 'time'      → HH:MM:SS.mmm (same as true)
-    // timestamp: 'iso'       → full ISO 8601
-    // timestamp: 'relative'  → +1.234s since process start
+    levels:    { warn: true, error: true, fatal: true }, // omit = all levels
+    prefix:    true,      // show [LEVEL] badge (default: true)
+    color:     true,      // ANSI color when TTY (default: true, auto-detected)
+    data:      true,      // append metadata/context as second console arg
+    pretty:    true,      // pretty-print data with indentation (implies data)
+    timestamp: true,      // prepend HH:MM:SS.mmm timestamp
+    // timestamp: 'time'     → HH:MM:SS.mmm (same as true)
+    // timestamp: 'iso'      → full ISO 8601
+    // timestamp: 'relative' → +1.234s since process start
   },
 })
 ```
@@ -112,7 +120,7 @@ Example output with `timestamp: true`:
 
 ### Auto-context
 
-Lumber captures `pid`, `hostname`, and `NODE_ENV` once at `config()` time and attaches them to every log. No per-call overhead.
+Lumber captures `pid`, `hostname`, and `NODE_ENV` once at `config()` time and attaches them to every log's encrypted payload. No per-call overhead.
 
 ```js
 // Default: on
@@ -129,54 +137,6 @@ lumber.config({ ..., context: { caller: true, callerDepth: 1 } })
 ```
 
 User-supplied `context` in `LogData` is merged on top of auto-context, so you can always override specific fields per call.
-
-### Private field encryption
-
-Any value passed as `private` in `LogData` is encrypted client-side with AES-256-GCM before leaving the process. The plaintext never reaches the API.
-
-```js
-lumber.info('User updated', {
-  private: { email: 'user@example.com', ip: '1.2.3.4' },
-})
-```
-
-The `encryptionKey` in your config must be a base64-encoded 32-byte symmetric key. Keep it out of source control — it is required to decrypt logs in the Lumber app.
-
-Generate a key:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-### Sensitive key protection
-
-Lumber automatically detects common sensitive keys in metadata (`password`, `token`, `email`, `ssn`, `creditCard`, etc.) and acts on them based on your config.
-
-**Default behavior:**
-- `encryptionKey` present → `'encrypt'` — silently moves matching keys into the encrypted private field
-- No `encryptionKey` → `'redact'` — replaces the value with `'[redacted]'` in metadata
-
-```js
-// Simple string form
-lumber.config({ ..., sensitiveKeys: 'warn' })    // always warn
-lumber.config({ ..., sensitiveKeys: 'redact' })  // replace value with '[redacted]'
-lumber.config({ ..., sensitiveKeys: 'encrypt' }) // move to encrypted private field
-lumber.config({ ..., sensitiveKeys: false })     // disable entirely
-
-// Object form — fine-grained control
-lumber.config({
-  ...,
-  sensitiveKeys: {
-    behavior: 'redact',                           // omit = same smart default
-    add:    ['legacyPin', 'internalToken'],        // extend the built-in list
-    ignore: ['email'],                            // remove from the built-in list
-  },
-})
-```
-
-Built-in list covers: `password`, `secret`, `token`, `apiKey`, `privateKey`, `sessionId`, `otp`, `mfa`, `ssn`, `creditCard`, `cvv`, `email`, `phone`, `dob`, `connectionString`, and common variants/casing.
-
-Key names are normalized before matching — `access_token`, `accessToken`, and `ACCESSTOKEN` all match `accesstoken`.
 
 ## Queue behavior
 

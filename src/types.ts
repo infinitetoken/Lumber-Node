@@ -4,8 +4,8 @@ import type { LogLevelName } from '@infinitetoken/lumber-kit'
 export interface LumberConfig {
   /** Bearer token for API authentication (API key from app settings). */
   apiKey: string
-  /** 32-byte symmetric key (base64) for AES-256-GCM encryption of the private log field. Required only if you use the private field on any log call. */
-  encryptionKey?: string
+  /** 32-byte symmetric key (base64) for AES-256-GCM encryption of all log content. */
+  encryptionKey: string
   /** Lumber API base URL (no trailing path). Defaults to the official Lumber API. */
   endpoint?: string
 
@@ -38,27 +38,4 @@ export interface LumberConfig {
    * callerDepth: extra stack frames to skip (default 0) — increment per wrapper layer.
    */
   context?: boolean | { env?: boolean; caller?: boolean; callerDepth?: number }
-
-  /**
-   * Protect common sensitive keys (password, token, email, ssn, etc.) found in metadata.
-   * Default when encryptionKey is set: 'encrypt' — moves matching keys into the encrypted private field.
-   * Default when no encryptionKey:    'redact'  — replaces the value with '[redacted]' in metadata.
-   * 'redact'  — replaces the value with '[redacted]' in metadata.
-   * false     — disables detection entirely.
-   *
-   * Object form for fine-grained control:
-   *   behavior — override the action (omit = same smart default)
-   *   add      — extend the built-in list with your own key names
-   *   ignore   — remove keys from the built-in list
-   */
-  sensitiveKeys?:
-    | false
-    | 'warn'
-    | 'redact'
-    | 'encrypt'
-    | {
-        behavior?: 'warn' | 'redact' | 'encrypt'
-        add?: string[]
-        ignore?: string[]
-      }
 }
