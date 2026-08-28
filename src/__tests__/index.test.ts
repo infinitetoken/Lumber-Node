@@ -1,12 +1,14 @@
-import { readFileSync } from 'node:fs'
 import { createDecipheriv, randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { LumberClient } from '../index'
+
 import { LogLevel, LogPayload } from '@infinitetoken/lumber-kit'
 
+import { LumberClient } from '../index'
+
 const VALID_ENCRYPTION_KEY = randomBytes(32).toString('base64')
-const VALID_API_KEY        = 'test-token'
-const ENDPOINT             = 'https://example.com'
+const VALID_API_KEY = 'test-token'
+const ENDPOINT = 'https://example.com'
 
 function makeClient(cfg: Record<string, unknown> = {}) {
   return new LumberClient({ apiKey: VALID_API_KEY, encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT, context: false, ...cfg })
@@ -20,11 +22,11 @@ function fetchedBody(spy: jest.SpyInstance, callIndex = 0): Record<string, unkno
 function decryptedPayload(spy: jest.SpyInstance, callIndex = 0): LogPayload {
   const body = fetchedBody(spy, callIndex)
   const enc = body.encrypted as { nonce: string; payload: string; keyVersion: number }
-  const nonce      = Buffer.from(enc.nonce, 'base64')
-  const combined   = Buffer.from(enc.payload, 'base64')
-  const authTag    = combined.subarray(0, 16)
+  const nonce = Buffer.from(enc.nonce, 'base64')
+  const combined = Buffer.from(enc.payload, 'base64')
+  const authTag = combined.subarray(0, 16)
   const ciphertext = combined.subarray(16)
-  const decipher   = createDecipheriv('aes-256-gcm', Buffer.from(VALID_ENCRYPTION_KEY, 'base64'), nonce)
+  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(VALID_ENCRYPTION_KEY, 'base64'), nonce)
   decipher.setAuthTag(authTag)
   const plain = decipher.update(ciphertext, undefined, 'utf8') + decipher.final('utf8')
   return JSON.parse(plain) as LogPayload
@@ -35,16 +37,14 @@ function decryptedPayload(spy: jest.SpyInstance, callIndex = 0): LogPayload {
 describe('LumberClient constructor', () => {
   it('throws RangeError when key decodes to wrong byte length', () => {
     const badKey = randomBytes(16).toString('base64')
-    expect(() => new LumberClient({ apiKey: 't', encryptionKey: badKey, endpoint: ENDPOINT }))
-      .toThrow(RangeError)
+    expect(() => new LumberClient({ apiKey: 't', encryptionKey: badKey, endpoint: ENDPOINT })).toThrow(RangeError)
   })
 
   it('throws Error mentioning Node 18 when fetch is not a function', () => {
     const orig = (globalThis as any).fetch
     ;(globalThis as any).fetch = undefined
     try {
-      expect(() => new LumberClient({ apiKey: 't', encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT }))
-        .toThrow(/Node 18/)
+      expect(() => new LumberClient({ apiKey: 't', encryptionKey: VALID_ENCRYPTION_KEY, endpoint: ENDPOINT })).toThrow(/Node 18/)
     } finally {
       ;(globalThis as any).fetch = orig
     }
@@ -63,10 +63,10 @@ describe('level shorthand methods', () => {
 
   it.each([
     ['debug', LogLevel.Debug],
-    ['info',  LogLevel.Info],
-    ['warn',  LogLevel.Warn],
+    ['info', LogLevel.Info],
+    ['warn', LogLevel.Warn],
     ['error', LogLevel.Error],
-    ['fatal', LogLevel.Fatal],
+    ['fatal', LogLevel.Fatal]
   ] as const)('%s() sends correct level', async (method, expectedLevel) => {
     const client = makeClient()
     ;(client[method] as (m: string) => void)('test message')
@@ -190,8 +190,8 @@ describe('console mirroring', () => {
   afterEach(() => fetchSpy.mockRestore())
 
   it('console: true outputs message only — no data appended', () => {
-    const infoSpy  = jest.spyOn(console, 'info').mockImplementation(() => {})
-    const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {})
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {})
     const client = makeClient({ console: true })
@@ -205,7 +205,10 @@ describe('console mirroring', () => {
     expect(errorSpy).toHaveBeenCalledWith('[ERROR] hello error')
     expect(errorSpy).toHaveBeenCalledWith('[FATAL] hello fatal')
     expect(debugSpy).toHaveBeenCalledWith('[DEBUG] hello debug')
-    infoSpy.mockRestore(); warnSpy.mockRestore(); errorSpy.mockRestore(); debugSpy.mockRestore()
+    infoSpy.mockRestore()
+    warnSpy.mockRestore()
+    errorSpy.mockRestore()
+    debugSpy.mockRestore()
   })
 
   it('console: { data: true } appends extras as second arg', () => {
@@ -234,18 +237,20 @@ describe('console mirroring', () => {
     client.warn('should log')
     expect(infoSpy).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalledWith('[WARN]  should log')
-    warnSpy.mockRestore(); infoSpy.mockRestore()
+    warnSpy.mockRestore()
+    infoSpy.mockRestore()
   })
 
   it('console: { levels: { error: true }, data: true } — level filter + data combined', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
-    const warnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
     const client = makeClient({ console: { levels: { error: true }, data: true } })
     client.warn('ignored', { x: 1 })
     client.error('shown', { x: 1 })
     expect(warnSpy).not.toHaveBeenCalled()
     expect(errorSpy).toHaveBeenCalledWith('[ERROR] shown', expect.objectContaining({ metadata: { x: 1 } }))
-    errorSpy.mockRestore(); warnSpy.mockRestore()
+    errorSpy.mockRestore()
+    warnSpy.mockRestore()
   })
 })
 

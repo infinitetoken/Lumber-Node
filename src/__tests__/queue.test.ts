@@ -17,7 +17,10 @@ describe('AsyncQueue', () => {
   it('enqueue() returns synchronously before any fetch completes', () => {
     let fetchResolve: () => void
     fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(
-      () => new Promise<Response>((res) => { fetchResolve = () => res({ ok: true } as Response) })
+      () =>
+        new Promise<Response>((res) => {
+          fetchResolve = () => res({ ok: true } as Response)
+        })
     )
     const queue = new AsyncQueue(TOKEN, ENDPOINT)
     const start = Date.now()

@@ -1,5 +1,6 @@
 import { createDecipheriv } from 'node:crypto'
 import { randomBytes } from 'node:crypto'
+
 import { encryptPayload } from '../encrypt'
 
 const VALID_KEY = randomBytes(32).toString('base64')
@@ -22,9 +23,9 @@ describe('encryptPayload', () => {
     const data = { message: 'round-trip', code: 'ERR_TEST', line: 99 }
     const result = encryptPayload(data, VALID_KEY)
     const buf = Buffer.from(result, 'base64')
-    const iv  = buf.subarray(0, 12)
+    const iv = buf.subarray(0, 12)
     const tag = buf.subarray(12, 28)
-    const ct  = buf.subarray(28)
+    const ct = buf.subarray(28)
     const key = Buffer.from(VALID_KEY, 'base64')
     const decipher = createDecipheriv('aes-256-gcm', key, iv)
     decipher.setAuthTag(tag)
