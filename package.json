@@ -1,6 +1,6 @@
 {
   "name": "@infinitetoken/lumber",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "TypeScript Node.js logging plugin for Lumber — AES-256-GCM encrypted, async queue, zero dependencies",
   "keywords": [
     "logging",
