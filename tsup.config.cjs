@@ -1,1 +1,1 @@
-module.exports = require('@infinitetoken/tsconfig/tsup')()
+module.exports = require('@infinitetoken/tsconfig/tsup/lib')()
