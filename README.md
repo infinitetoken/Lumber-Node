@@ -1,8 +1,10 @@
 # @infinitetoken/lumber
 
-Node.js client for [Lumber](https://www.infinitetoken.com/apps/lumber) — cloud logging with full E2E encryption, async queue, and zero runtime dependencies.
+Node.js client for Lumber: cloud logging with full E2E encryption and an async queue. Its one runtime dependency is `@infinitetoken/lumber-kit`, Lumber's shared types and constants package, which has no dependencies of its own. Encryption and delivery use Node's built-in `crypto` and `fetch`.
 
-All log content is encrypted with AES-256-GCM before leaving the process. The API stores only opaque blobs — it cannot read your logs.
+All log content is encrypted with AES-256-GCM before leaving the process. The API stores only the ciphertext plus each log's level (kept unencrypted for filtering and push alerts), so it cannot read your logs.
+
+Logs are viewed in the Lumber mobile app for iOS and Android, which decrypts them on your device. The app is coming soon to the App Store.
 
 ## Installation
 
@@ -14,7 +16,7 @@ npm install @infinitetoken/lumber
 
 Call `lumber.config()` once at app startup. Every other import in your project shares the same configured client automatically.
 
-> **Warning:** Calling `lumber.config()` a second time replaces the client immediately. Any logs queued in the previous client that have not yet been sent are silently dropped. Call `await lumber.flush()` before reconfiguring if you need to preserve them.
+> **Warning:** Calling `lumber.config()` a second time replaces the client immediately. Logs still queued in the previous client keep sending in the background, but `lumber.flush()` only waits for the new client's queue. Call `await lumber.flush()` before reconfiguring if you need to be sure they're delivered.
 
 ```js
 // ESM
@@ -25,7 +27,7 @@ const { default: lumber } = require('@infinitetoken/lumber')
 
 lumber.config({
   apiKey:        process.env.LUMBER_API_KEY,
-  encryptionKey: process.env.LUMBER_ENCRYPTION_KEY, // required — 32-byte key, base64-encoded
+  encryptionKey: process.env.LUMBER_ENCRYPTION_KEY, // required: 32-byte key, base64-encoded
 })
 
 lumber.info('Server started', { port: 3000 })
@@ -36,11 +38,14 @@ lumber.error('Payment failed', { traceId: 'trace-abc', orderId: '789' })
 await lumber.flush()
 ```
 
-Generate an encryption key:
+## Getting your keys
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
+Both values come from the Lumber mobile app:
+
+1. Create an app in Lumber. The app generates its encryption key on your device and shows it once on the **Your Encryption Key** screen, with a copy button. You can copy it again later from the app's **Secrets** screen on any of your devices that holds the key.
+2. On the app's **Secrets** screen, add an API key. It's shown only once, so copy it right away.
+
+The encryption key never leaves your devices except wrapped (encrypted) to the account key of each person with access to the app, so Lumber's servers can't read it. Teammates and guests you share the app with get the key automatically, end-to-end encrypted, once anyone who already has it opens Lumber. No copy-pasting needed.
 
 ## Log methods
 
@@ -52,7 +57,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `lumber.warn(message, data?)` | Warn |
 | `lumber.error(message, data?)` | Error |
 | `lumber.fatal(message, data?)` | Fatal |
-| `lumber.flush()` | Returns `Promise<void>` — waits for queue to drain |
+| `lumber.flush()` | Returns `Promise<void>`, waits for queue to drain |
 
 ## LogData
 
@@ -69,14 +74,14 @@ lumber.info('User action', {
 })
 ```
 
-Explicit `metadata` keys win over colliding extra keys. The entire payload — including `message`, `requestId`, `context`, and `metadata` — is encrypted before it leaves the process.
+Explicit `metadata` keys win over colliding extra keys. The entire payload (including `message`, `requestId`, `context`, and `metadata`) is encrypted before it leaves the process.
 
 ## Config
 
 ```ts
 lumber.config({
-  apiKey:        string,  // API key from Lumber app settings
-  encryptionKey: string,  // 32-byte AES key, base64-encoded — required
+  apiKey:        string,  // API key from the app's Secrets screen in Lumber
+  encryptionKey: string,  // 32-byte AES key, base64-encoded, required
   endpoint?:     string,  // override API base URL (default: official Lumber API)
   console?:      boolean | ConsoleConfig,
   context?:      boolean | ContextConfig,
@@ -88,7 +93,7 @@ lumber.config({
 Echo logs to the terminal as they are enqueued.
 
 ```js
-// Simple — all levels, badge only
+// Simple: all levels, badge only
 lumber.config({ ..., console: true })
 
 // Fine-grained
@@ -140,7 +145,7 @@ User-supplied `context` in `LogData` is merged on top of auto-context, so you ca
 
 ## Queue behavior
 
-Logs are enqueued in memory and sent sequentially in the background. Failed sends are retried up to 5 times with exponential backoff (1 s → 2 s → 4 s → 8 s). Call `flush()` before process exit to ensure all queued logs are delivered.
+Logs are enqueued in memory and sent sequentially in the background, one `POST /logs` request per log. A network error or any non-2xx response counts as a failed attempt. Each log gets up to 5 attempts, waiting 1 s, 2 s, 4 s, then 8 s between them; after the fifth failure the log is dropped with a console warning. Call `flush()` before process exit to ensure all queued logs are delivered.
 
 ```js
 process.on('SIGINT', async () => {
@@ -163,8 +168,8 @@ await client.flush()
 
 ## Requirements
 
-Node 18.17 or later.
+Node 18 or later (uses the built-in `fetch`).
 
 ## License
 
-MIT — [See LICENSE](https://github.com/infinitetoken/Lumber-Node/blob/master/LICENSE)
+MIT. See the `LICENSE` file included in the package.
