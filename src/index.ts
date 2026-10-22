@@ -75,7 +75,7 @@ export class LumberClient {
       throw new RangeError(`Invalid encryptionKey: expected 32 bytes after base64 decode, got ${keyBytes.length}.`)
     }
     this.config = config
-    this.queue = new AsyncQueue(config.apiKey, config.endpoint ?? 'https://lumber-api.vercel.app')
+    this.queue = new AsyncQueue(config.apiKey, config.endpoint ?? 'https://api.lumber.infinitetoken.com')
     this.baseContext = this.buildBaseContext()
   }
 
