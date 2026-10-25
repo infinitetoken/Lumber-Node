@@ -2,10 +2,13 @@ import type { LogLevelName } from '@infinitetoken/lumber-kit'
 
 /** Configuration passed to lumber.config(). */
 export interface LumberConfig {
-  /** Bearer token for API authentication (API key from app settings). */
+  /**
+   * API key from the app's Secrets screen in Lumber: its token and the app's encryption key, joined by a dot. Only the
+   * token is sent to the API; the encryption key (32 bytes, base64) encrypts all log content with AES-256-GCM.
+   */
   apiKey: string
-  /** 32-byte symmetric key (base64) for AES-256-GCM encryption of all log content. */
-  encryptionKey: string
+  /** The app's encryption key, for an API key without one (created before Lumber joined the two). */
+  encryptionKey?: string
   /** Lumber API base URL (no trailing path). Defaults to the official Lumber API. */
   endpoint?: string
 

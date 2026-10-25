@@ -51,6 +51,44 @@ describe('LumberClient constructor', () => {
   })
 })
 
+// ─── API key ──────────────────────────────────────────────────────────────────
+
+describe('API key with its encryption key joined', () => {
+  const JOINED_API_KEY = `${VALID_API_KEY}.${VALID_ENCRYPTION_KEY}`
+  let fetchSpy: jest.SpyInstance
+
+  beforeEach(() => {
+    fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
+  })
+  afterEach(() => fetchSpy.mockRestore())
+
+  it('encrypts with the key after the dot and sends only the token', async () => {
+    const client = makeClient({ apiKey: JOINED_API_KEY, encryptionKey: undefined })
+    client.info('joined')
+    await client.flush()
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${VALID_API_KEY}`)
+    expect(init.body as string).not.toContain(VALID_ENCRYPTION_KEY)
+    expect(decryptedPayload(fetchSpy).message).toBe('joined')
+  })
+
+  it('accepts encryptionKey alongside it when they match', () => {
+    expect(() => makeClient({ apiKey: JOINED_API_KEY })).not.toThrow()
+  })
+
+  it('throws when encryptionKey disagrees with the joined key', () => {
+    expect(() => makeClient({ apiKey: JOINED_API_KEY, encryptionKey: randomBytes(32).toString('base64') })).toThrow(/different encryption key/)
+  })
+
+  it('throws when neither apiKey nor encryptionKey carries an encryption key', () => {
+    expect(() => makeClient({ encryptionKey: undefined })).toThrow(/no encryption key/)
+  })
+
+  it('throws when apiKey is missing', () => {
+    expect(() => makeClient({ apiKey: undefined })).toThrow(/Missing apiKey/)
+  })
+})
+
 // ─── Level methods ────────────────────────────────────────────────────────────
 
 describe('level shorthand methods', () => {

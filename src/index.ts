@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import os from 'node:os'
 
-import { LogContext, LogEncrypted, LogLevel, LogLevelName, LogPayload } from '@infinitetoken/lumber-kit'
+import { LogContext, LogEncrypted, LogLevel, LogLevelName, LogPayload, splitApiKey } from '@infinitetoken/lumber-kit'
 
 import { encryptPayload } from './encrypt'
 import { AsyncQueue } from './queue'
@@ -63,6 +63,7 @@ export interface LogData {
 
 export class LumberClient {
   private readonly config: LumberConfig
+  private readonly encryptionKey: string
   private readonly queue: AsyncQueue
   private readonly baseContext: Partial<LogContext>
 
@@ -70,12 +71,23 @@ export class LumberClient {
     if (typeof fetch !== 'function') {
       throw new Error(`Lumber requires Node 18 or later (built-in fetch). Current Node version: ${process.version}`)
     }
-    const keyBytes = Buffer.from(config.encryptionKey, 'base64')
+    // The API key carries the encryption key after its token; only the token goes to the API
+    const { token, encryptionKey: joinedKey } = splitApiKey(config.apiKey ?? '')
+    if (!token) throw new Error("[lumber] Missing apiKey. Create one on your app's Secrets screen in Lumber.")
+    if (joinedKey && config.encryptionKey && joinedKey !== config.encryptionKey) {
+      throw new Error('[lumber] apiKey carries a different encryption key than encryptionKey. Remove encryptionKey: the API key includes it.')
+    }
+    const encryptionKey = joinedKey ?? config.encryptionKey
+    if (!encryptionKey) {
+      throw new Error("[lumber] apiKey has no encryption key. Copy a new API key from your app's Secrets screen in Lumber, which includes it.")
+    }
+    const keyBytes = Buffer.from(encryptionKey, 'base64')
     if (keyBytes.length !== 32) {
-      throw new RangeError(`Invalid encryptionKey: expected 32 bytes after base64 decode, got ${keyBytes.length}.`)
+      throw new RangeError(`Invalid encryption key: expected 32 bytes after base64 decode, got ${keyBytes.length}.`)
     }
     this.config = config
-    this.queue = new AsyncQueue(config.apiKey, config.endpoint ?? 'https://api.lumber.infinitetoken.com')
+    this.encryptionKey = encryptionKey
+    this.queue = new AsyncQueue(token, config.endpoint ?? 'https://api.lumber.infinitetoken.com')
     this.baseContext = this.buildBaseContext()
   }
 
@@ -162,7 +174,7 @@ export class LumberClient {
 
     this.maybeConsoleLog(level, message, payload)
 
-    const encrypted = encryptPayload(payload, this.config.encryptionKey)
+    const encrypted = encryptPayload(payload, this.encryptionKey)
     const buf = Buffer.from(encrypted, 'base64')
     const logEncrypted: LogEncrypted = {
       nonce: buf.subarray(0, 12).toString('base64'),
