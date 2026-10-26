@@ -143,7 +143,7 @@ User-supplied `context` in `LogData` is merged on top of auto-context, so you ca
 
 ## Queue behavior
 
-Logs are enqueued in memory and sent sequentially in the background, one `POST /logs` request per log. A network error or any non-2xx response counts as a failed attempt. Each log gets up to 5 attempts, waiting 1 s, 2 s, 4 s, then 8 s between them; after the fifth failure the log is dropped with a console warning. Call `flush()` before process exit to ensure all queued logs are delivered.
+Logs are enqueued in memory and sent sequentially in the background, one `POST /logs` request per log. A network error or a 5xx response counts as a failed attempt: each log gets up to 5 attempts, waiting 1 s, 2 s, 4 s, then 8 s between them, and after the fifth failure it's dropped with a console warning. A log Lumber refuses (a 4xx, such as an invalid API key) is dropped at once with a warning, since sending it again won't help. When your team has sent its plan's logs for the month, Lumber answers 429: the plugin warns once and drops logs until the month turns (the response's `Retry-After`), rather than queueing them. Call `flush()` before process exit to ensure all queued logs are delivered.
 
 ```js
 process.on('SIGINT', async () => {
