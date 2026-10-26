@@ -70,7 +70,7 @@ lumber.info('User action', {
 })
 ```
 
-Explicit `metadata` keys win over colliding extra keys. The entire payload (including `message`, `requestId`, `context`, and `metadata`) is encrypted before it leaves the process.
+Explicit `metadata` keys win over colliding extra keys. A `context` or `metadata` that isn't an object (a string, an array) is kept as an ordinary key in `metadata`, so `{ context: 'billing' }` lands as `metadata.context`. The entire payload (including `message`, `requestId`, `context`, and `metadata`) is encrypted before it leaves the process.
 
 ## Config
 

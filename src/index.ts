@@ -50,6 +50,8 @@ function formatTimestamp(mode: boolean | 'time' | 'iso' | 'relative'): string {
   return `${hh}:${mm}:${ss}.${ms} `
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
 export { LumberConfig } from './types'
 export { LogLevel } from '@infinitetoken/lumber-kit'
 
@@ -159,7 +161,14 @@ export class LumberClient {
   }
 
   private enqueueLog(message: string, level: LogLevel, data?: LogData): void {
-    const { requestId, traceId, context, metadata, ...rest } = data ?? {}
+    const { requestId, traceId, context: givenContext, metadata: givenMetadata, ...rest } = data ?? {}
+
+    // context and metadata are merged as objects. Anything else there (a string, an array) is kept as an ordinary
+    // extra key in metadata, where spreading it would have turned { context: 'billing' } into { 0: 'b', 1: 'i', ... }
+    const context = isRecord(givenContext) ? givenContext : undefined
+    const metadata = isRecord(givenMetadata) ? givenMetadata : undefined
+    if (givenContext != null && !context) rest.context = givenContext
+    if (givenMetadata != null && !metadata) rest.metadata = givenMetadata
 
     const mergedMetadata: Record<string, unknown> | undefined = Object.keys(rest).length > 0 ? { ...rest, ...(metadata ?? {}) } : metadata
 

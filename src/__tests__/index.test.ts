@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 import { LogLevel, LogPayload } from '@infinitetoken/lumber-kit'
 
-import { LumberClient } from '../index'
+import { LogData, LumberClient } from '../index'
 
 const VALID_ENCRYPTION_KEY = randomBytes(32).toString('base64')
 const VALID_API_KEY = 'test-token'
@@ -173,6 +173,23 @@ describe('LogData field spreading', () => {
   it('no metadata in payload when no extra data provided', async () => {
     const client = makeClient()
     client.info('plain message')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(decryptedPayload(fetchSpy).metadata).toBeUndefined()
+  })
+
+  // A string context was spread character by character, into { 0: 'b', 1: 'i', ... }
+  it('a context or metadata that is not an object lands in metadata as it is', async () => {
+    const client = makeClient()
+    client.info('msg', { context: 'billing', metadata: ['a', 'b'], userId: '123' } as unknown as LogData)
+    await new Promise((r) => setTimeout(r, 50))
+    const payload = decryptedPayload(fetchSpy)
+    expect(payload.metadata).toEqual({ context: 'billing', metadata: ['a', 'b'], userId: '123' })
+    expect(payload.context).toBeUndefined()
+  })
+
+  it('a null context or metadata is left out', async () => {
+    const client = makeClient()
+    client.info('msg', { context: null, metadata: null } as unknown as LogData)
     await new Promise((r) => setTimeout(r, 50))
     expect(decryptedPayload(fetchSpy).metadata).toBeUndefined()
   })
