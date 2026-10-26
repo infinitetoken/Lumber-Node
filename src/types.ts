@@ -7,7 +7,7 @@ export interface LumberConfig {
    * token is sent to the API; the encryption key (32 bytes, base64) encrypts all log content with AES-256-GCM.
    */
   apiKey: string
-  /** The app's encryption key, for an API key without one (created before Lumber joined the two). */
+  /** The app's encryption key (32 bytes, base64), for an apiKey that's only a token. If apiKey carries one, they must match. */
   encryptionKey?: string
   /** Lumber API base URL (no trailing path). Defaults to the official Lumber API. */
   endpoint?: string

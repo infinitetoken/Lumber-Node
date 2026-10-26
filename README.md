@@ -43,8 +43,6 @@ Create an app in the Lumber mobile app, and it takes you straight to adding an A
 
 An API key is two values joined by a dot: a token, then the app's encryption key, which the app generates on your device when you create the app. The plugin sends only the token to Lumber's API and encrypts every log with the rest, so the encryption key never leaves your process. Beyond your devices and your servers, it only exists wrapped (encrypted) to the account key of each person with access to the app, so Lumber's servers can't read it. Teammates and guests you share the app with get the key automatically, end-to-end encrypted, once anyone who already has it opens Lumber.
 
-An API key created before keys carried the encryption key is a bare token: keep passing `encryptionKey` alongside it, or replace it with a new key.
-
 ## Log methods
 
 | Method | Level |
@@ -79,7 +77,6 @@ Explicit `metadata` keys win over colliding extra keys. The entire payload (incl
 ```ts
 lumber.config({
   apiKey:         string,  // API key from the app's Secrets screen in Lumber (token.encryptionKey)
-  encryptionKey?: string,  // only for an older API key that's a bare token: the app's 32-byte key, base64-encoded
   endpoint?:      string,  // override API base URL (default: official Lumber API)
   console?:       boolean | ConsoleConfig,
   context?:       boolean | ContextConfig,
