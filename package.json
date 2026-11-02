@@ -50,7 +50,7 @@
   },
   "prettier": "@infinitetoken/eslint-config/prettier",
   "dependencies": {
-    "@infinitetoken/lumber-kit": "^0.4.23"
+    "@infinitetoken/lumber-kit": "^0.7.0"
   },
   "devDependencies": {
     "@infinitetoken/eslint-config": "^0.2.1",

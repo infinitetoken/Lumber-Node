@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import os from 'node:os'
 
-import { LogContext, LogEncrypted, LogLevel, LogLevelName, LogPayload, splitApiKey } from '@infinitetoken/lumber-kit'
+import { buildLogPayload, DEFAULT_API_ENDPOINT, LOG_KEY_VERSION, LogContext, LogData, LogEncrypted, LogLevel, LogLevelName, LogPayload, splitApiKey } from '@infinitetoken/lumber-kit'
 
 import { encryptPayload } from './encrypt'
 import { AsyncQueue } from './queue'
@@ -50,18 +50,8 @@ function formatTimestamp(mode: boolean | 'time' | 'iso' | 'relative'): string {
   return `${hh}:${mm}:${ss}.${ms} `
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
-
 export { LumberConfig } from './types'
-export { LogLevel } from '@infinitetoken/lumber-kit'
-
-export interface LogData {
-  requestId?: string
-  traceId?: string
-  context?: LogContext
-  metadata?: Record<string, unknown>
-  [key: string]: unknown
-}
+export { type LogData, LogLevel } from '@infinitetoken/lumber-kit'
 
 export class LumberClient {
   private readonly config: LumberConfig
@@ -89,7 +79,7 @@ export class LumberClient {
     }
     this.config = config
     this.encryptionKey = encryptionKey
-    this.queue = new AsyncQueue(token, config.endpoint ?? 'https://api.lumber.infinitetoken.com')
+    this.queue = new AsyncQueue(token, config.endpoint ?? DEFAULT_API_ENDPOINT)
     this.baseContext = this.buildBaseContext()
   }
 
@@ -146,7 +136,6 @@ export class LumberClient {
       return
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { message: _m, level: _l, ...extras } = payload
     if (Object.keys(extras).length === 0) {
       console[method](out)
@@ -161,25 +150,9 @@ export class LumberClient {
   }
 
   private enqueueLog(message: string, level: LogLevel, data?: LogData): void {
-    const { requestId, traceId, context: givenContext, metadata: givenMetadata, ...rest } = data ?? {}
-
-    // context and metadata are merged as objects. Anything else there (a string, an array) is kept as an ordinary
-    // extra key in metadata, where spreading it would have turned { context: 'billing' } into { 0: 'b', 1: 'i', ... }
-    const context = isRecord(givenContext) ? givenContext : undefined
-    const metadata = isRecord(givenMetadata) ? givenMetadata : undefined
-    if (givenContext != null && !context) rest.context = givenContext
-    if (givenMetadata != null && !metadata) rest.metadata = givenMetadata
-
-    const mergedMetadata: Record<string, unknown> | undefined = Object.keys(rest).length > 0 ? { ...rest, ...(metadata ?? {}) } : metadata
-
-    const autoCtx = { ...this.baseContext, ...this.getCallerContext() }
-    const mergedCtx = Object.keys(autoCtx).length > 0 ? { ...autoCtx, ...(context ?? {}) } : context
-
-    const payload: LogPayload = { level, message }
-    if (requestId !== undefined) payload.requestId = requestId
-    if (traceId !== undefined) payload.traceId = traceId
-    if (mergedCtx !== undefined) payload.context = mergedCtx
-    if (mergedMetadata !== undefined) payload.metadata = mergedMetadata
+    // The payload every Lumber plugin builds the same way (Lumber-Kit's contract): requestId and traceId, the call's
+    // context over the automatic one, and every other key in metadata
+    const payload = buildLogPayload(level, message, data, { ...this.baseContext, ...this.getCallerContext() })
 
     this.maybeConsoleLog(level, message, payload)
 
@@ -188,7 +161,7 @@ export class LumberClient {
     const logEncrypted: LogEncrypted = {
       nonce: buf.subarray(0, 12).toString('base64'),
       payload: buf.subarray(12).toString('base64'),
-      keyVersion: 1
+      keyVersion: LOG_KEY_VERSION
     }
 
     this.queue.enqueue({ level, encrypted: logEncrypted })

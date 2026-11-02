@@ -1,4 +1,6 @@
 /* eslint-disable no-console */
+import { logDelivery, logDeliveryOutcome, logRetryDelayMs } from '@infinitetoken/lumber-kit'
+
 interface QueueItem {
   body: Record<string, unknown>
   attempts: number
@@ -6,13 +8,10 @@ interface QueueItem {
 
 type SendResult = 'sent' | 'retry' | 'drop'
 
-// How long to stop sending after a 429 that says nothing of when to try again
-const DEFAULT_PAUSE_MS = 60 * 60 * 1000
-
 export class AsyncQueue {
   private readonly queue: QueueItem[] = []
   private draining = false
-  private readonly maxAttempts = 5
+  private readonly maxAttempts = logDelivery.maxAttempts
   private readonly token: string
   private readonly endpoint: string
   // Set by a 429 (the team has sent its plan's logs for the month): until then logs are dropped as they're logged,
@@ -61,7 +60,7 @@ export class AsyncQueue {
           console.warn(`[lumber] dropping log after ${this.maxAttempts} failed attempts`)
           this.queue.shift()
         } else {
-          await this.sleep(Math.min(1000 * Math.pow(2, item.attempts - 1), 30_000))
+          await this.sleep(logRetryDelayMs(item.attempts))
         }
       }
     }
@@ -78,13 +77,15 @@ export class AsyncQueue {
         },
         body: JSON.stringify(item.body)
       })
-      if (res.ok) return 'sent'
-      if (res.status === 429) {
+      // What each answer means is Lumber-Kit's (logDeliveryOutcome), the same for every plugin
+      const outcome = res.ok ? 'sent' : logDeliveryOutcome(res.status)
+      if (outcome === 'sent') return 'sent'
+      if (outcome === 'pause') {
         this.pause(res, await this.messageOf(res))
         return 'drop'
       }
       // Any other refusal (a bad key, a malformed log) won't go through on a later try
-      if (res.status >= 400 && res.status < 500) {
+      if (outcome === 'drop') {
         const message = await this.messageOf(res)
         console.warn(`[lumber] log refused: HTTP ${res.status}${message ? ` (${message})` : ''}`)
         return 'drop'
@@ -101,7 +102,7 @@ export class AsyncQueue {
   // queued, with one warning for the whole pause
   private pause(res: Response, message: string | null): void {
     const seconds = Number(res.headers?.get?.('Retry-After'))
-    this.pausedUntil = Date.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_PAUSE_MS)
+    this.pausedUntil = Date.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : logDelivery.pauseMs)
     this.queue.splice(1)
     console.warn(`[lumber] ${message ?? 'Lumber is refusing logs for now (HTTP 429).'} Dropping logs until ${new Date(this.pausedUntil).toISOString()}.`)
   }

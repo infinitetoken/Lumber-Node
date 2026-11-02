@@ -1,5 +1,12 @@
 import crypto from 'node:crypto'
 
+/** AES-256-GCM over a UTF-8 plaintext with the given nonce (12 bytes): the 16-byte auth tag, then the ciphertext. */
+export function seal(plaintext: string, key: Buffer, nonce: Buffer): Buffer {
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce)
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  return Buffer.concat([cipher.getAuthTag(), ct])
+}
+
 /**
  * Encrypts arbitrary data with AES-256-GCM using a 32-byte symmetric key.
  * Wire format: base64(IV[12] | AuthTag[16] | ciphertext).
@@ -12,10 +19,5 @@ export function encryptPayload(data: object, keyBase64: string): string {
   }
 
   const iv = crypto.randomBytes(12)
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
-  const plaintext = JSON.stringify(data)
-  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
-  const authTag = cipher.getAuthTag()
-
-  return Buffer.concat([iv, authTag, ct]).toString('base64')
+  return Buffer.concat([iv, seal(JSON.stringify(data), key, iv)]).toString('base64')
 }
