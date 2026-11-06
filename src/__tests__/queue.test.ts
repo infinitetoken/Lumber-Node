@@ -73,6 +73,83 @@ describe('AsyncQueue', () => {
     sleepSpy.mockRestore()
   })
 
+  describe('timeouts', () => {
+    let warnSpy: jest.SpyInstance
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      warnSpy.mockRestore()
+    })
+
+    // A fetch that never answers, rejecting only when its signal aborts, as Node's fetch does
+    const hangingFetch = () =>
+      jest.spyOn(globalThis, 'fetch').mockImplementation(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal!.reason))
+          })
+      )
+
+    it('gives up on a send with no answer, counting it as a failed attempt', async () => {
+      fetchSpy = hangingFetch()
+      const sleepSpy = jest.spyOn(AsyncQueue.prototype as any, 'sleep').mockResolvedValue(undefined)
+      const queue = new AsyncQueue(TOKEN, ENDPOINT, 20)
+      queue.enqueue(makeItem())
+      await expect(queue.flush(2000)).resolves.toBe(true)
+      expect(fetchSpy).toHaveBeenCalledTimes(5)
+      expect(warnSpy.mock.calls[0][0]).toBe('[lumber] send failed: no answer in 0.02s')
+      sleepSpy.mockRestore()
+    })
+
+    it('sends every log with a signal that times out after 10 seconds unless told otherwise', async () => {
+      fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
+      const timeout = jest.spyOn(AbortSignal, 'timeout')
+      const queue = new AsyncQueue(TOKEN, ENDPOINT)
+      queue.enqueue(makeItem())
+      await queue.flush()
+      expect(timeout).toHaveBeenCalledWith(10_000)
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      timeout.mockRestore()
+    })
+  })
+
+  describe('flush', () => {
+    it('resolves true at once with nothing queued', async () => {
+      await expect(new AsyncQueue(TOKEN, ENDPOINT).flush(0)).resolves.toBe(true)
+    })
+
+    it('resolves true once the queue has drained', async () => {
+      fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
+      const queue = new AsyncQueue(TOKEN, ENDPOINT)
+      queue.enqueue(makeItem())
+      queue.enqueue(makeItem())
+      await expect(queue.flush()).resolves.toBe(true)
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+
+    it('resolves false when its time runs out first, and the log keeps sending after', async () => {
+      let answer!: () => void
+      fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = () => resolve({ ok: true } as Response)
+          })
+      )
+      const queue = new AsyncQueue(TOKEN, ENDPOINT)
+      queue.enqueue(makeItem())
+      const started = Date.now()
+      await expect(queue.flush(30)).resolves.toBe(false)
+      expect(Date.now() - started).toBeLessThan(500)
+      answer()
+      await expect(queue.flush(1000)).resolves.toBe(true)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('when Lumber refuses logs', () => {
     let warnSpy: jest.SpyInstance
 

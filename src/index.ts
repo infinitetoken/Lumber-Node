@@ -4,7 +4,7 @@ import os from 'node:os'
 import { buildLogPayload, DEFAULT_API_ENDPOINT, LOG_KEY_VERSION, LogContext, LogData, LogEncrypted, LogLevel, LogLevelName, LogPayload, splitApiKey } from '@infinitetoken/lumber-kit'
 
 import { encryptPayload } from './encrypt'
-import { AsyncQueue } from './queue'
+import { AsyncQueue, DEFAULT_SEND_TIMEOUT_MS } from './queue'
 import type { LumberConfig } from './types'
 
 const logLevelToName: Record<number, LogLevelName> = {
@@ -77,9 +77,13 @@ export class LumberClient {
     if (keyBytes.length !== 32) {
       throw new RangeError(`Invalid encryption key: expected 32 bytes after base64 decode, got ${keyBytes.length}.`)
     }
+    const timeout = config.timeout ?? DEFAULT_SEND_TIMEOUT_MS
+    if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout <= 0) {
+      throw new RangeError(`Invalid timeout: expected a number of milliseconds above 0, got ${String(config.timeout)}.`)
+    }
     this.config = config
     this.encryptionKey = encryptionKey
-    this.queue = new AsyncQueue(token, config.endpoint ?? DEFAULT_API_ENDPOINT)
+    this.queue = new AsyncQueue(token, config.endpoint ?? DEFAULT_API_ENDPOINT, timeout)
     this.baseContext = this.buildBaseContext()
   }
 
@@ -185,8 +189,9 @@ export class LumberClient {
   fatal(message: string, data?: LogData): void {
     this.enqueueLog(message, LogLevel.Fatal, data)
   }
-  flush(): Promise<void> {
-    return this.queue.flush()
+  /** Waits for queued logs to send: true once all are sent or dropped, false when `timeoutMs` passes first. */
+  flush(timeoutMs?: number): Promise<boolean> {
+    return this.queue.flush(timeoutMs)
   }
 }
 
@@ -221,8 +226,8 @@ const lumber = {
   fatal(message: string, data?: LogData): void {
     getClient().fatal(message, data)
   },
-  flush(): Promise<void> {
-    return getClient().flush()
+  flush(timeoutMs?: number): Promise<boolean> {
+    return getClient().flush(timeoutMs)
   }
 }
 

@@ -53,7 +53,7 @@ An API key is two values joined by a dot: a token, then the app's encryption key
 | `lumber.warn(message, data?)` | Warn |
 | `lumber.error(message, data?)` | Error |
 | `lumber.fatal(message, data?)` | Fatal |
-| `lumber.flush()` | Returns `Promise<void>`, waits for queue to drain |
+| `lumber.flush(timeoutMs?)` | Waits for the queue to drain: resolves `true` once every log is sent or dropped, `false` if `timeoutMs` passes first |
 
 ## LogData
 
@@ -78,6 +78,7 @@ Explicit `metadata` keys win over colliding extra keys. A `context` or `metadata
 lumber.config({
   apiKey:         string,  // API key from the app's Secrets screen in Lumber (token.encryptionKey)
   endpoint?:      string,  // override API base URL (default: official Lumber API)
+  timeout?:       number,  // ms to wait for Lumber to answer one log (default 10000)
   console?:       boolean | ConsoleConfig,
   context?:       boolean | ContextConfig,
 })
@@ -140,7 +141,7 @@ User-supplied `context` in `LogData` is merged on top of auto-context, so you ca
 
 ## Queue behavior
 
-Logs are enqueued in memory and sent sequentially in the background, one `POST /logs` request per log. A network error or a 5xx response counts as a failed attempt: each log gets up to 5 attempts, waiting 1 s, 2 s, 4 s, then 8 s between them, and after the fifth failure it's dropped with a console warning. A log Lumber refuses (a 4xx, such as an invalid API key) is dropped at once with a warning, since sending it again won't help. When your team has sent its plan's logs for the month, Lumber answers 429: the plugin warns once and drops logs until the month turns (the response's `Retry-After`), rather than queueing them. Call `flush()` before process exit to ensure all queued logs are delivered. These rules, and how a log's data becomes its encrypted payload, come from `@infinitetoken/lumber-kit`, whose contract Lumber's Python and Go clients are tested against too.
+Logs are enqueued in memory and sent sequentially in the background, one `POST /logs` request per log. A network error, a 5xx response or no answer within `timeout` (10 seconds unless set) counts as a failed attempt: each log gets up to 5 attempts, waiting 1 s, 2 s, 4 s, then 8 s between them, and after the fifth failure it's dropped with a console warning. A log Lumber refuses (a 4xx, such as an invalid API key) is dropped at once with a warning, since sending it again won't help. When your team has sent its plan's logs for the month, Lumber answers 429: the plugin warns once and drops logs until the month turns (the response's `Retry-After`), rather than queueing them. Call `flush()` before process exit to ensure all queued logs are delivered; `flush(5000)` waits at most 5 seconds and resolves `false` if logs were still queued then. These rules, and how a log's data becomes its encrypted payload, come from `@infinitetoken/lumber-kit`, whose contract Lumber's Python and Go clients are tested against too.
 
 ```js
 process.on('SIGINT', async () => {
@@ -148,6 +149,22 @@ process.on('SIGINT', async () => {
   process.exit(0)
 })
 ```
+
+## Serverless
+
+A serverless platform can freeze or stop a function as soon as it responds, with logs still queued. Keep the function running until they're sent with the platform's own hook, giving `flush()` a time limit so a slow answer can't hold the function to its maximum duration. On Vercel, with `waitUntil` from `@vercel/functions`:
+
+```js
+import { waitUntil } from '@vercel/functions'
+
+export default async function handler(req, res) {
+  lumber.info('Handled request', { path: req.url })
+  res.send('ok')
+  waitUntil(lumber.flush(10_000))
+}
+```
+
+Where there's no such hook (AWS Lambda), `await lumber.flush(10_000)` before returning.
 
 ## Power users: multiple instances
 

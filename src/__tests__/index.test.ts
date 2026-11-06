@@ -51,6 +51,43 @@ describe('LumberClient constructor', () => {
   })
 })
 
+// ─── Timeout and flush ─────────────────────────────────────────────────────────
+
+describe('timeout and flush', () => {
+  let fetchSpy: jest.SpyInstance
+
+  afterEach(() => fetchSpy?.mockRestore())
+
+  it.each([0, -1, Number.NaN, Infinity, '5000'])('throws RangeError for a timeout of %p', (timeout) => {
+    expect(() => makeClient({ timeout })).toThrow(RangeError)
+  })
+
+  it('times out each send after the configured timeout', async () => {
+    fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
+    const timeout = jest.spyOn(AbortSignal, 'timeout')
+    const client = makeClient({ timeout: 2500 })
+    client.info('timed')
+    await client.flush()
+    expect(timeout).toHaveBeenCalledWith(2500)
+    timeout.mockRestore()
+  })
+
+  it('flush(timeoutMs) resolves false while a send is still waiting, true once it lands', async () => {
+    let answer!: () => void
+    fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = () => resolve({ ok: true } as Response)
+        })
+    )
+    const client = makeClient()
+    client.error('slow')
+    await expect(client.flush(20)).resolves.toBe(false)
+    answer()
+    await expect(client.flush()).resolves.toBe(true)
+  })
+})
+
 // ─── API key ──────────────────────────────────────────────────────────────────
 
 describe('API key with its encryption key joined', () => {

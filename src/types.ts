@@ -11,6 +11,11 @@ export interface LumberConfig {
   encryptionKey?: string
   /** Lumber API base URL (no trailing path). Defaults to the official Lumber API. */
   endpoint?: string
+  /**
+   * How long to wait for Lumber to answer one log, in milliseconds (10,000 unless set). A log with no answer in time
+   * counts as a failed attempt and is tried again, like a network error.
+   */
+  timeout?: number
 
   /**
    * Echo logs to the console.

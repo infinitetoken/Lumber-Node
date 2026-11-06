@@ -8,19 +8,24 @@ interface QueueItem {
 
 type SendResult = 'sent' | 'retry' | 'drop'
 
+/** How long a send waits for Lumber to answer before it counts as a failed attempt, as Lumber-Go and Lumber-Python wait. */
+export const DEFAULT_SEND_TIMEOUT_MS = 10_000
+
 export class AsyncQueue {
   private readonly queue: QueueItem[] = []
   private draining = false
   private readonly maxAttempts = logDelivery.maxAttempts
   private readonly token: string
   private readonly endpoint: string
+  private readonly timeoutMs: number
   // Set by a 429 (the team has sent its plan's logs for the month): until then logs are dropped as they're logged,
   // rather than queued and retried, which would only grow the queue and the console
   private pausedUntil = 0
 
-  constructor(token: string, endpoint: string) {
+  constructor(token: string, endpoint: string, timeoutMs: number = DEFAULT_SEND_TIMEOUT_MS) {
     this.token = token
     this.endpoint = endpoint
+    this.timeoutMs = timeoutMs
   }
 
   /** Synchronous — returns immediately; queue drains asynchronously in the background. */
@@ -32,19 +37,26 @@ export class AsyncQueue {
     }
   }
 
-  /** Resolves when the queue is empty and all in-flight sends have settled. */
-  flush(): Promise<void> {
-    if (!this.draining && this.queue.length === 0) return Promise.resolve()
+  /**
+   * Resolves true once the queue is empty and every send has settled, or false when `timeoutMs` passes first. Logs still
+   * queued then keep sending in the background while the process runs. With no `timeoutMs` it waits as long as it takes.
+   */
+  flush(timeoutMs?: number): Promise<boolean> {
+    if (this.idle()) return Promise.resolve(true)
+    const deadline = timeoutMs === undefined ? Infinity : Date.now() + Math.max(0, timeoutMs)
     return new Promise((resolve) => {
       const check = () => {
-        if (!this.draining && this.queue.length === 0) {
-          resolve()
-        } else {
-          setTimeout(check, 50)
-        }
+        if (this.idle()) return resolve(true)
+        const left = deadline - Date.now()
+        if (left <= 0) return resolve(false)
+        setTimeout(check, Math.min(50, left))
       }
       check()
     })
+  }
+
+  private idle(): boolean {
+    return !this.draining && this.queue.length === 0
   }
 
   private async drain(): Promise<void> {
@@ -75,7 +87,10 @@ export class AsyncQueue {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${this.token}`
         },
-        body: JSON.stringify(item.body)
+        body: JSON.stringify(item.body),
+        // A send with no answer counts as a failed attempt rather than holding the queue (and flush()) until the
+        // platform's own timeout, which on serverless can be the function's whole run
+        signal: AbortSignal.timeout(this.timeoutMs)
       })
       // What each answer means is Lumber-Kit's (logDeliveryOutcome), the same for every plugin
       const outcome = res.ok ? 'sent' : logDeliveryOutcome(res.status)
@@ -93,7 +108,12 @@ export class AsyncQueue {
       console.warn(`[lumber] send failed: HTTP ${res.status}`)
       return 'retry'
     } catch (err) {
-      console.warn(`[lumber] send error:`, err)
+      // The signal's reason, a DOMException, which isn't always an instance of this realm's Error
+      if ((err as { name?: unknown } | null)?.name === 'TimeoutError') {
+        console.warn(`[lumber] send failed: no answer in ${this.timeoutMs / 1000}s`)
+      } else {
+        console.warn(`[lumber] send error:`, err)
+      }
       return 'retry'
     }
   }
