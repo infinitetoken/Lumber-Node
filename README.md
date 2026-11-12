@@ -1,10 +1,10 @@
 # @infinitetoken/lumber
 
-Node.js client for Lumber: cloud logging with full E2E encryption and an async queue. Its one runtime dependency is `@infinitetoken/lumber-kit`, Lumber's shared types and constants package, which has no dependencies of its own. Encryption and delivery use Node's built-in `crypto` and `fetch`.
+Node.js client for [Lumber](https://lumber.infinitetoken.com): cloud logging with full E2E encryption and an async queue. Its one runtime dependency is `@infinitetoken/lumber-kit`, Lumber's shared types and constants package, which has no dependencies of its own. Encryption and delivery use Node's built-in `crypto` and `fetch`.
 
 All log content is encrypted with AES-256-GCM before leaving the process. The API stores only the ciphertext plus each log's level (kept unencrypted for filtering and push alerts), so it cannot read your logs.
 
-Logs are viewed in the Lumber mobile app for iOS and Android, which decrypts them on your device. The app is coming soon to the App Store.
+Logs are viewed in the [Lumber app](https://lumber.infinitetoken.com/download) for iPhone, iPad, Mac, Windows and Linux, which decrypts them on your device, or read from the terminal and by AI agents with [the lumber command](https://lumber.infinitetoken.com/docs/cli). Full docs are at [lumber.infinitetoken.com/docs](https://lumber.infinitetoken.com/docs/getting-started).
 
 ## Installation
 
@@ -39,7 +39,7 @@ await lumber.flush()
 
 ## Getting your API key
 
-Create an app in the Lumber mobile app, and it takes you straight to adding an API key. The key is shown only once, so copy it right away. Any device holding the app's key can add more from the app's **Secrets** screen, one per deployment if you like, each deleted on its own.
+Create an app in the Lumber app, and it takes you straight to adding an API key. The key is shown only once, so copy it right away. Any device holding the app's key can add more from the app's **Secrets** screen, one per deployment if you like, each deleted on its own.
 
 An API key is two values joined by a dot: a token, then the app's encryption key, which the app generates on your device when you create the app. The plugin sends only the token to Lumber's API and encrypts every log with the rest, so the encryption key never leaves your process. Beyond your devices and your servers, it only exists wrapped (encrypted) to the account key of each person with access to the app, so Lumber's servers can't read it. Teammates and guests you share the app with get the key automatically, end-to-end encrypted, once anyone who already has it opens Lumber.
 
