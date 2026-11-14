@@ -1,6 +1,6 @@
 {
   "name": "@infinitetoken/lumber",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "description": "End-to-end encrypted logging for Node.js: logs are AES-256-GCM encrypted before they leave your server, sent from an async queue",
   "keywords": [
     "logging",
