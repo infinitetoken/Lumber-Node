@@ -2,7 +2,6 @@
   "name": "@infinitetoken/lumber",
   "version": "2.5.1",
   "description": "End-to-end encrypted logging for Node.js: logs are AES-256-GCM encrypted before they leave your server, sent from an async queue",
-  "homepage": "https://lumber.infinitetoken.com",
   "keywords": [
     "logging",
     "logger",
@@ -17,12 +16,13 @@
     "log-management",
     "async-queue"
   ],
+  "homepage": "https://lumber.infinitetoken.com",
+  "bugs": {
+    "url": "https://github.com/infinitetoken/Lumber-Node/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/infinitetoken/lumber-node.git"
-  },
-  "bugs": {
-    "url": "https://github.com/infinitetoken/Lumber-Node/issues"
   },
   "license": "MIT",
   "author": "Jay Deaton",
@@ -58,7 +58,7 @@
   },
   "prettier": "@infinitetoken/eslint-config/prettier",
   "dependencies": {
-    "@infinitetoken/lumber-kit": "^0.8.0"
+    "@infinitetoken/lumber-kit": "^1.0.0"
   },
   "devDependencies": {
     "@infinitetoken/eslint-config": "^0.2.1",
